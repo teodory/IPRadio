@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">play.global.audio</domain>
+        <domain includeSubdomains="true">46.10.150.243</domain>
+        <!-- Add any other domains as necessary -->
+    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

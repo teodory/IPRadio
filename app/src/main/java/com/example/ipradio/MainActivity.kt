@@ -19,69 +19,100 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Observer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextField
+import androidx.compose.material3.Divider
+import androidx.compose.ui.Alignment
+
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
 
 import com.example.ipradio.RadioData.Radio
 
 
 class MainActivity : ComponentActivity() {
-// ~/Library/Android/sdk/extras/google/auto $./desktop-head-unit --usb
-    // ...
     private var songInfo by mutableStateOf<String>("Empty...")
     private lateinit var playbackManager: PlaybackManager
-//    private var selectedRadio by mutableStateOf<Radio?>(null)
-//    @Composable
-//    fun PreviewMessageCard() {
-//        IPRadioTheme {
-//            Surface {
-//                MessageCard(
-//                    msg = Message("Lexi", "Hey, take a look at Jetpack Compose, it's great!")
-//                )
-//            }
-//        }
-//    }
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         this.playbackManager = PlaybackManager.getInstance(this)
-//        playbackManager.observeSongText(this, Observer { newText ->
-//            //            textView.text = newText
-//            playbackManager.selectedRadio?.songAuthor = newText.toString()
-//        })
         // Show played song info
         playbackManager.songInfo.observe(this, Observer {it ->
             songInfo = it.toString()
-            println("Teodor: Main onCreate")
         })
 
-//        playbackManager.playbackState.observe(this, Observer { state ->
-//            // Update your UI based on the new state
-//            when (state) {
-//                PlaybackManagerState.PLAYING -> // Update UI for playing state
-//                PlaybackManagerState.PAUSED -> // Update UI for paused state
-//                PlaybackManagerState.STOPPED -> // Update UI for stopped state
-//            }
-//        })
 
         setContent {
             IPRadioTheme {
-//                Conversation(SampleData.conversationSample)
-//  ================================================================================
-//                Surface(
-//                    modifier = Modifier.fillMaxSize(),
-//                    color = MaterialTheme.colorScheme.background
-//                ) {
-////                    Greeting("Android")
-//                    GreetingPreview()
-//                }
-//  ================================================================================
-                Column {
-                    ShowRadioList(playbackManager.getRadiosList())
+                var showDialog by remember { mutableStateOf(false) }
+                var showAddDialog by remember { mutableStateOf(false) }
+                var radioToEdit by remember { mutableStateOf<Radio?>(null) }
+                var isEditMode by remember { mutableStateOf(false) }
+
+                if (showDialog && radioToEdit != null) {
+                    EditRadioDialog(
+                        radio = radioToEdit!!,
+                        onDismiss = { showDialog = false },
+                        onSave = { newRadio ->
+                            val index = playbackManager.getRadiosList().indexOf(radioToEdit!!)
+                            if (index != -1) {
+                                playbackManager.updateRadio(index, newRadio)
+                            }
+                            showDialog = false
+                        }
+                    )
+                }
+
+                if (showAddDialog) {
+                    AddRadioDialog(
+                        onDismiss = { showAddDialog = false },
+                        onSave = { newRadio ->
+                            playbackManager.addRadio(newRadio)
+                            showAddDialog = false
+                        }
+                    )
+                }
+
+                Column(modifier = Modifier.padding(bottom = 48.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        if (isEditMode) {
+                            IconButton(onClick = { showAddDialog = true }) {
+                                Icon(Icons.Default.Add, contentDescription = "Add Radio")
+                            }
+                        }
+                        IconButton(onClick = { isEditMode = !isEditMode }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        }
+                    }
+                    Divider(color = Color.Gray, thickness = 1.dp)
+
+                    ShowRadioList(
+                        radios = playbackManager.getRadiosList(),
+                        isEditMode = isEditMode,
+                        onEditClick = { radio ->
+                            radioToEdit = radio
+                            showDialog = true
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
                     Row {
                         Button(
                             onClick = {
-//                              player.stop()
                                 playbackManager.playPrevRadio()
                             },
                             modifier = Modifier.padding(horizontal = 3.dp)
@@ -110,7 +141,6 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier
                         )
                     }
-//                    ShowSongInfo()
                 }
             }
         }
@@ -122,50 +152,116 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun ShowRadioList(radios: List<Radio>) {
-        LazyColumn {
+    fun ShowRadioList(radios: List<Radio>, isEditMode: Boolean, onEditClick: (Radio) -> Unit, modifier: Modifier = Modifier) {
+        LazyColumn(modifier = modifier) {
             items(radios) { radio ->
-                RadioCard(radio)
+                RadioCard(radio, isEditMode = isEditMode, onEditClick = { onEditClick(radio) })
             }
         }
     }
 
     @Composable
-    fun RadioCard(radio: Radio) {
+    fun RadioCard(radio: Radio, isEditMode: Boolean, onEditClick: () -> Unit) {
 
-        Row(modifier = Modifier.padding(all = 8.dp)) {
+        Row(modifier = Modifier.padding(all = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = radio.name,
-                modifier = Modifier.clickable(
-                ) {
-                    if (playbackManager.selectedRadio == radio) {
-                        // If the same radio is selected, stop the player
-                        playbackManager.stop()
-                        // Set selectedRadio to null since no radio is currently selected
-                        playbackManager.selectedRadio = null
-                    } else {
-                        // If a different radio is selected, play the new radio
-//                        playbackManager.selectedRadio = radio // Teodor: check for bug; commented because playbackManager.play check and change .selectedRadio
-                        playbackManager.play(radio)
-                    }
-//                    selectedRadio = radio
-//                    player.createMediaPlayer(radio.url)
-                },
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable {
+                        if (playbackManager.selectedRadio == radio) {
+                            // If the same radio is selected, stop the player
+                            playbackManager.stop()
+                            // Set selectedRadio to null since no radio is currently selected
+                            playbackManager.selectedRadio = null
+                        } else {
+                            // If a different radio is selected, play the new radio
+                            playbackManager.play(radio)
+                        }
+                    },
                 color = if (playbackManager.selectedRadio == radio) Color.Red else Color.Black
             )
+            if (isEditMode) {
+                IconButton(onClick = onEditClick) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                }
+            }
         }
     }
 
-//    @Composable
-//    fun ShowSongInfo()
-//    {
-//        Row {
-//            Text(
-//                text = songInfo,
-//                modifier = Modifier
-//            )
-//        }
-//    }
+    @Composable
+    fun EditRadioDialog(
+        radio: Radio,
+        onDismiss: () -> Unit,
+        onSave: (Radio) -> Unit
+    ) {
+        var name by remember { mutableStateOf(radio.name) }
+        var url by remember { mutableStateOf(radio.url) }
+        var image by remember { mutableStateOf(radio.image) }
+        var infoDataUrl by remember { mutableStateOf(radio.infoDataUrl) }
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Edit Radio") },
+            text = {
+                Column {
+                    TextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
+                    TextField(value = url, onValueChange = { url = it }, label = { Text("URL") })
+                    TextField(value = image, onValueChange = { image = it }, label = { Text("Image URL") })
+                    TextField(value = infoDataUrl, onValueChange = { infoDataUrl = it }, label = { Text("Info URL") })
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onSave(radio.copy(name = name, url = url, image = image, infoDataUrl = infoDataUrl))
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                Button(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    @Composable
+    fun AddRadioDialog(
+        onDismiss: () -> Unit,
+        onSave: (Radio) -> Unit
+    ) {
+        var name by remember { mutableStateOf("") }
+        var url by remember { mutableStateOf("") }
+        var image by remember { mutableStateOf("") }
+        var infoDataUrl by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Add New Radio") },
+            text = {
+                Column {
+                    TextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
+                    TextField(value = url, onValueChange = { url = it }, label = { Text("URL") })
+                    TextField(value = image, onValueChange = { image = it }, label = { Text("Image URL") })
+                    TextField(value = infoDataUrl, onValueChange = { infoDataUrl = it }, label = { Text("Info URL") })
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onSave(Radio(name = name, url = url, image = image, infoDataUrl = infoDataUrl, songAuthor = "", logo = 0, headers = emptyMap()))
+                }) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                Button(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
 
     @Composable
     fun Greeting(name: String) {

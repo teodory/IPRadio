@@ -48,14 +48,10 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
 
     override fun onCreate() {
         super.onCreate()
-        println("Teodor: MyMediaBrowserServiceClass::onCreate")
-//        player = ExoPlayer.Builder(applicationContext).build()
 
         playbackManager = PlaybackManager.getInstance(applicationContext)
 
         val a: (String) -> Unit = { ss ->
-
-            println("Teodor: ------- $ss")
             if (ss == "play")
             {
                 val extras = Bundle()
@@ -74,18 +70,11 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
                 mSession?.apply {
                     setPlaybackState(playbackStateBuilder.apply {
                         setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1f)
-//                        if (extras != null) {
-//                            setBufferedPosition(extras.getLong(MediaMetadataCompat.METADATA_KEY_DURATION))
-//                        }
-
-// ???????? 2222 start
                         setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE
                                 or PlaybackStateCompat.ACTION_STOP
                                 or PlaybackStateCompat.ACTION_SEEK_TO
                                 or PlaybackStateCompat.ACTION_PAUSE)
-// ??????  2222 end
 
-//??????? 111 start
                         val playbackStateExtras = Bundle().apply {
                             putString(
                                 MediaConstants.PLAYBACK_STATE_EXTRAS_KEY_MEDIA_ID,
@@ -94,30 +83,24 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
                         }
                         setExtras(playbackStateExtras)
                         addActionsForPlayback(this)
-// ??????? 111 end
                     }.build())
 
                     setMetadata(
                         MediaMetadataCompat.Builder().apply {
                             putString(
-//                                MediaMetadataCompat.METADATA_KEY_MEDIA_ID, extras.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID)
                                 MediaMetadataCompat.METADATA_KEY_MEDIA_ID, playbackManager.selectedRadioInd.toString()
                             )
                             putString(
-//                                    MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, extras.getString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE)
                                 MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, playbackManager.selectedRadio?.name.toString()
                             )
                             putString(
                                 MediaMetadataCompat.METADATA_KEY_ARTIST, "Artist"
-//                                    extras.getString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE)
                             )
                             putString(
                                 MediaMetadataCompat.METADATA_KEY_ALBUM_ARTIST, "Album"
-//                                    extras.getString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE)
                             )
                             putString(
                                 MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, "A" + playbackManager.selectedRadio?.songAuthor.toString()
-//                                    extras.getString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE)
                             )
                             putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, "DISPLAY_DESCRIPTION")
 //                                putLong(
@@ -125,7 +108,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
 ////                                    extras.getLong(MediaMetadataCompat.METADATA_KEY_DURATION)
 //                                )
                             putString(
-//                                    MediaMetadataCompat.METADATA_KEY_MEDIA_URI, radio.url
                                 MediaMetadataCompat.METADATA_KEY_MEDIA_URI, extras.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_URI)
                             )
                             putLong(
@@ -147,19 +129,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
 //                                    ContentResolver.SCHEME_ANDROID_RESOURCE + "://"
 //                                            + "com.example.ipradio" + "/" + R.drawable.darik_logo
 //                                )
-                            //                        if (albumCover != null) {
-//                            putBitmap(
-//                                MediaMetadataCompat.METADATA_KEY_ART, albumCover
-//                            )
-//                        } else {
-////                            putBitmap(
-////                                MediaMetadataCompat.METADATA_KEY_ART, defaultArt
-////                            )
-//                        }
-//                        putLong(
-//                            MediaConstants.METADATA_KEY_IS_EXPLICIT,
-//                            extras.getLong(MediaConstants.METADATA_KEY_IS_EXPLICIT)
-//                        )
                         }.build()
                     )
                 }
@@ -180,7 +149,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
             }
         }
 
-//        playbackManager.setCallback(a) // TRY
 
         ///////
         mCallback = MyMediaSessionCallback()
@@ -190,7 +158,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
                 playbackStateBuilder.apply {
                     setState(PlaybackStateCompat.STATE_NONE, 0L, 1f)
                     addActionsForPlayback(this)
-//                    addCustomActionsForPlayback(this)
                 }.build()
             )
 
@@ -204,73 +171,19 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
         //////
 
 
-        playbackManager.addPlaybackStateListener(this) // TRY
-
-
-        // Create a new MediaSession.
-//        mSession = MediaSessionCompat(this, "MusicService")
-//        mSession = MediaSessionCompat(baseContext, "MusicService")
-//
-//        updatePlaybackState(PlaybackState.STATE_STOPPED)
-//        mCallback = MyMediaSessionCallback()
-//        mSession?.setCallback(mCallback)
-//
-//        mSession?.isActive = true
-//
-//        mSession?.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
+        playbackManager.addPlaybackStateListener(this)
 
 
 
-        // ~~~~~~~~~~~~~~~~~~~~~ V
-//        val sessionActivityPendingIntent1 = PendingIntent.getActivity(
-//            /* context = */  applicationContext,
-//            /* requestCode = */ 0,
-//            /* intent = */ Intent( applicationContext, MainActivity::class.java),
-//            /* flags = */ PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-//        )
-//        val sessionActivityPendingIntent =
-//            packageManager?.getLaunchIntentForPackage(packageName)?.let { sessionIntent ->
-//                PendingIntent.getActivity(this, 0, sessionIntent, PendingIntent.FLAG_IMMUTABLE)
-//            }
-//        mSession?.setSessionActivity(sessionActivityPendingIntent)
-        // ~~~~~~~~~~~~~~~~~~~~~ ^^^
 
 
-//        sessionToken = mSession?.sessionToken
+
+
     }
 
     override fun onPlaybackStateChanged(newState: PlaybackManagerState?) {
-        println("Teodor: onPlaybackStateChanged: newState $newState")
 
         if (newState == PlaybackManagerState.PLAYING) {
-            //----------------------------------------------- 1
-            /*
-            val metadata = MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Song Title")
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Artist Name")
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Album Name")
-                .build()
-
-            mSession!!.setMetadata(metadata)
-
-// Update the playback state
-            val playbackState = PlaybackStateCompat.Builder()
-                .setActions(
-                    PlaybackStateCompat.ACTION_PLAY or
-                            PlaybackStateCompat.ACTION_PAUSE or
-                            PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
-                )
-                .setState(
-                    PlaybackStateCompat.STATE_PLAYING,
-                    PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN,
-                    1.0f
-                )
-                .build()
-
-            mSession!!.setPlaybackState(playbackState)
-*/
-            //----------------------------------------------- 1
 
 
 
@@ -290,18 +203,11 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
             mSession?.apply {
                 setPlaybackState(playbackStateBuilder.apply {
                     setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1f)
-//                        if (extras != null) {
-//                            setBufferedPosition(extras.getLong(MediaMetadataCompat.METADATA_KEY_DURATION))
-//                        }
-
-// ???????? 2222 start
                     setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE
                             or PlaybackStateCompat.ACTION_STOP
                             or PlaybackStateCompat.ACTION_SEEK_TO
                             or PlaybackStateCompat.ACTION_PAUSE)
-// ??????  2222 end
 
-//??????? 111 start
                     val playbackStateExtras = Bundle().apply {
                         putString(
                             MediaConstants.PLAYBACK_STATE_EXTRAS_KEY_MEDIA_ID,
@@ -310,22 +216,18 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
                     }
                     setExtras(playbackStateExtras)
                     addActionsForPlayback(this)
-// ??????? 111 end
                 }.build())
 
                 setMetadata(
                     MediaMetadataCompat.Builder().apply {
                         putString(
-//                                MediaMetadataCompat.METADATA_KEY_MEDIA_ID, extras.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID)
                             MediaMetadataCompat.METADATA_KEY_MEDIA_ID, playbackManager.selectedRadioInd.toString()
                         )
                         putString(
-//                                    MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, extras.getString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE)
                             MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, playbackManager.selectedRadio?.name.toString()
                         )
                         putString(
                             MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, playbackManager.selectedRadio?.songAuthor.toString() // 2
-//                                    extras.getString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE)
                         )
                         putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, "DISPLAY_DESCRIPTION")
                         putString(
@@ -344,30 +246,12 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
 
                         // HERE background image
                         putString(
-//                            MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, extras.getString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI)
                             MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, playbackManager.selectedRadio?.image
                         )
-//                        putString(
-//                            MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI,
-//                            ContentResolver.SCHEME_ANDROID_RESOURCE + "://"
-//                                    + "com.example.ipradio" + "/" + R.drawable.darik_logo
-//                        )
                     }.build()
                 )
             }
 
-//  TRY 222
-//            // Set metadata for the radio station
-//            val builder = MediaMetadataCompat.Builder()
-//            // Set appropriate metadata for the radio station
-//            // This will depend on what metadata you have available for the radio station
-//            builder.putString (MediaMetadataCompat.METADATA_KEY_TITLE, "test 123")
-// TRY 222
-
-
-
-//            updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-//            mCallback?.onPlay()
 
 
 
@@ -389,11 +273,9 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
         }
         if (newState == PlaybackManagerState.STOPPED) {
             updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
-//            mCallback?.onStop()
         }
         if (newState == PlaybackManagerState.PAUSED) {
             updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
-//            mCallback?.onPause()
         }
         if (newState == PlaybackManagerState.UPDATE) {
 
@@ -518,7 +400,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
         parentId: String,
         result: Result<List<MediaBrowserCompat.MediaItem>>
     ) {
-        println("Teodor: MyMediaBrowserServiceClass::onLoadChildren")
 
         // Teodor: Here small list icon
         val drawableResourceId: Int = android.R.drawable.ic_menu_slideshow
@@ -535,8 +416,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
                     extras.putString(MediaMetadataCompat.METADATA_KEY_MEDIA_URI, radio.url)
                     extras.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, radio.image)
                     extras.putInt(RADIO_INDEX, index)
-
-//                    extras.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, station.getDuration())
                     val radioImageUrl = Uri.parse(radio.image)
 
                     // Convert each Radio to a MediaItem
@@ -544,10 +423,8 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
                         MediaDescriptionCompat.Builder()
                             .setMediaId(radio.name) // use the radio's name as the ID
                             .setTitle(radio.name) // use the radio's name as the title
-//                            .setSubtitle(radio.url) // use the radio's url as the subtitle
                             .setDescription("Radio station") // set a general description
                             .setIconUri(radioImageUrl)
-//                            .setIconUri(drawableUri)
                             .setExtras(extras)
                             .build(),
                         MediaBrowserCompat.MediaItem.FLAG_PLAYABLE
@@ -616,7 +493,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     private fun addActionsForPlayback(playbackStateCompatBuilder: PlaybackStateCompat.Builder) {
-        println("Teodor: MyMediaBrowserServiceClass::addActionsForPlayback")
         playbackStateCompatBuilder.apply {
             setActions(PlaybackStateCompat.ACTION_PLAY
                     or PlaybackStateCompat.ACTION_PAUSE
@@ -628,24 +504,15 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
     }
 
     private fun setCustomAction(stateBuilder: PlaybackStateCompat.Builder) {
-//        val currentMusic: MediaSessionCompat.QueueItem = mQueueManager.getCurrentMusic() ?: return
-        // Set appropriate "Favorite" icon on Custom action:
-//        val mediaId = currentMusic.description.mediaId ?: return
-//        val musicId: String = MediaIDHelper.extractMusicIDFromMediaID(mediaId)
-//        val favoriteIcon: Int = androidx.media3.ui.R.drawable.exo_icon_shuffle_on
         val favoriteIcon: Int = R.drawable.ic_launcher_foreground
-//            if (mMusicProvider.isFavorite(musicId)) R.drawable.star_off else R.drawable.star_on
         Log.d(
             "TAG", "updatePlaybackState, setting Favorite custom action of music ",
-//            musicId, " current favorite=", mMusicProvider.isFavorite(musicId)
         )
         val customActionExtras = Bundle()
-//        WearHelper.setShowCustomActionOnWear(customActionExtras, true)
 
         customActionExtras.putBoolean(EXTRA_CUSTOM_ACTION_SHOW_ON_WEAR, true)
 
         stateBuilder.addCustomAction(
-//            PlaybackStateCompat.CustomAction.Builder( CUSTOM_ACTION_THUMBS_UP, mResources.getString(R.string.favorite), favoriteIcon )
             PlaybackStateCompat.CustomAction.Builder( CUSTOM_ACTION_THUMBS_UP, "dummy abcd", favoriteIcon )
                 .setExtras(customActionExtras)
                 .build()
@@ -653,9 +520,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
     }
 
     private fun updatePlaybackState(state: Int) {
-
-        println("updatePlaybackState : $state")
-        println("Teodor: MyMediaBrowserServiceClass::updatePlaybackState : $state")
 
         val stateBuilder = PlaybackStateCompat.Builder()
             .setActions(
@@ -668,16 +532,12 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
                         PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or
                         PlaybackStateCompat.ACTION_PREPARE_FROM_MEDIA_ID
             )
-//            .setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
         setCustomAction(stateBuilder)
         stateBuilder.setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
 
-//        mServiceCallback.onPlaybackStateUpdated(stateBuilder.build());
-//
-//        if (state == PlaybackStateCompat.STATE_PLAYING ||
-//            state == PlaybackStateCompat.STATE_PAUSED) {
-//            mServiceCallback.onNotificationRequired();
-//        }
+        setCustomAction(stateBuilder)
+        stateBuilder.setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
+
         mSession?.setPlaybackState(stateBuilder.build())
     }
 
@@ -686,19 +546,16 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
 
         override fun onPrepare() {
             println("Preparing")
-            println("Teodor: MyMediaSessionCallback::onPrepare")
             super.onPrepare()
         }
 
         override fun onPrepareFromMediaId(mediaId: String?, extras: Bundle?) {
             println("Preparing from media id")
-            println("Teodor: MyMediaSessionCallback::onPrepareFromMediaId")
             super.onPrepareFromMediaId(mediaId, extras)
         }
 
         override fun onPlay() {
             println("Playing")
-            println("Teodor: MyMediaSessionCallback::onPlay")
             // Request audio focus
             Toast.makeText(applicationContext, "Play", Toast.LENGTH_SHORT).show()
 
@@ -712,7 +569,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
 
         // Don't forget to abandon audio focus when appropriate
         override fun onPause() {
-            println("Teodor: MyMediaSessionCallback::onPause")
             // Pause your media player
             Toast.makeText(applicationContext, "Pause", Toast.LENGTH_SHORT).show()
             updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
@@ -723,7 +579,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
 
         override fun onStop() {
             Toast.makeText(applicationContext, "Stop", Toast.LENGTH_SHORT).show()
-            println("Teodor: MyMediaSessionCallback::onStop")
             super.onStop()
             // Stop your media player
             updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
@@ -733,18 +588,8 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
         }
 
         override fun onSkipToNext() {
-            println("Teodor: MyMediaSessionCallback::onSkipToNext")
             // Handle skip to next action
             // TODO: Teodor: Do I need this?
-//            Toast.makeText(applicationContext, "onSkipToNext", Toast.LENGTH_SHORT).show()
-//            Log.e("onSkipToNext", "onSkipToNext current: ${player.currentMediaItemIndex}")
-//            Log.e("onSkipToNext", "onSkipToNext next: ${player.nextMediaItemIndex}")
-//            Log.e("onSkipToNext", "onSkipToNext prev: ${player.previousMediaItemIndex}")
-//            var nextMediaItemIndex = player.currentMediaItemIndex + 1
-//            if (nextMediaItemIndex >= radioMediaItems.size)
-//            {
-//                nextMediaItemIndex = 0
-//            }
             val nextInd = playbackManager.getNextInd()
             val a = radioMediaItems[nextInd].mediaId
             if (a != null) {
@@ -753,21 +598,8 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
         }
 
         override fun onSkipToPrevious() {
-            println("Teodor: MyMediaSessionCallback::onSkipToPrevious")
             // Handle skip to previous action
             // TODO: Teodor: Do I need this?
-
-//            Toast.makeText(applicationContext, "onSkipToPrevious", Toast.LENGTH_SHORT).show()
-//            Log.e("onSkipToPrevious", "onSkipToPrevious ")
-//            var prevMediaItemIndex = player.currentMediaItemIndex - 1
-//            if (prevMediaItemIndex < 0)
-//            {
-//                prevMediaItemIndex = radioMediaItems.size - 1
-//            }
-//            val a = radioMediaItems[prevMediaItemIndex].mediaId
-//            if (a != null) {
-//                onPlayFromMediaId(a, radioMediaItems[prevMediaItemIndex].description.extras)
-//            }
 
             val prevInd = playbackManager.getPrevInd()
             val a = radioMediaItems[prevInd].mediaId
@@ -777,25 +609,19 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
         }
 
         override fun onSkipToQueueItem(id: Long) {
-            println("Teodor: MyMediaSessionCallback::onSkipToQueueItem")
             super.onSkipToQueueItem(id)
             Toast.makeText(applicationContext, "onSkipToQueueItem", Toast.LENGTH_SHORT).show()
             Log.e("onSkipToQueueItem", "onSkipToQueueItem id: $id ")
         }
 
         override fun onPlayFromMediaId(mediaId: String, extras: Bundle?) {
-            println("Teodor: MyMediaSessionCallback::onPlayFromMediaId: $mediaId")
             println("Playing from Media Id: $mediaId")
-
-//            super.onPlayFromMediaId(mediaId, extras)
 
             // Handle play from media ID action
             Toast.makeText(applicationContext, "onPlayFromMediaId: $mediaId", Toast.LENGTH_SHORT).show()
             Log.e("onPlayFromMediaId", "onPlayFromMediaId id: $mediaId ")
             // Find the radio item with this mediaId
             val radio = playbackManager.getRadiosList().find { it.name == mediaId }
-
-//            updatePlaybackState(PlaybackState.STATE_PLAYING)
 
             // If found, create and start the MediaPlayer
             if (radio != null) {
@@ -910,8 +736,6 @@ class MyMediaBrowserServiceClass : MediaBrowserServiceCompat(), PlaybackStateLis
 // ???? 3333 end
 
                 val a = mSession?.controller?.extras
-                val b = mediaItem.mediaMetadata.extras
-                val c = mediaItem.mediaMetadata.description
 //                mediaItem.mediaMetadata.extras = mSession?.controller?.extras
 
 //                1 ---------------------------------------------------------------------------------------------------------

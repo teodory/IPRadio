@@ -222,12 +222,9 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun Station.mediaItem(playableSource: Boolean = false, songTitle: String? = null): MediaItem {
-        val artwork = if (playableSource && image.isNotBlank()) {
-            Uri.parse(image)
-        } else {
-            val resource = logo.takeIf { it != 0 } ?: R.drawable.radio_224dp_sz48
-            Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/$resource")
-        }
+        val resource = logo.takeIf { it != 0 } ?: R.drawable.radio_224dp_sz48
+        val artwork = customArtworkUrl?.takeIf { playableSource }?.let(Uri::parse)
+            ?: Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/$resource")
         return MediaItem.Builder()
             .setMediaId(id)
             .setMediaMetadata(

@@ -27,7 +27,6 @@ import java.util.UUID
 
 class StationCatalog internal constructor(private val file: File) {
     private val mutex = Mutex()
-    private val defaultsById = defaultStations.associateBy(Station::id)
     private val loaded = try {
         Result.success(readStations())
     } catch (error: Exception) {
@@ -55,7 +54,7 @@ class StationCatalog internal constructor(private val file: File) {
                 }
                 val station = validatedStation(
                     previous?.id ?: UUID.randomUUID().toString(),
-                    name, url, image, infoDataUrl, defaultsById[id]
+                    name, url, image, infoDataUrl, defaultStationsById[id]
                 )
                 val updated = if (previous == null) {
                     current + station
@@ -87,7 +86,7 @@ class StationCatalog internal constructor(private val file: File) {
             require(id.isNotBlank())
             validatedStation(
                 id, fields.string("name"), fields.string("url"), fields.string("image"),
-                fields.string("infoDataUrl"), defaultsById[id]
+                fields.string("infoDataUrl"), defaultStationsById[id]
             )
         }
         val ids = stations.map(Station::id).toSet()
@@ -140,6 +139,10 @@ private fun JsonObject.string(key: String): String {
 
 private val webSchemes = setOf("http", "https")
 private val streamSchemes = webSchemes + setOf("rtsp", "udp")
+private val previousDefaultArtwork = mapOf(
+    "fmplus" to "http://fmplus.net/playernew/i/logo_fmplus.png",
+    "tangra-mega-rock" to "http://www.radiotangra.com/img/logo_tangra.png"
+)
 
 private fun validatedStation(
     id: String,
@@ -160,7 +163,7 @@ private fun validatedStation(
         id = id,
         name = trimmedName,
         url = streamUrl,
-        image = imageUrl,
+        image = if (builtIn != null && imageUrl == previousDefaultArtwork[id]) builtIn.image else imageUrl,
         logo = builtIn?.logo ?: 0,
         infoDataUrl = metadataUrl,
         metadataFormat = builtIn?.metadataFormat ?: MetadataFormat.PLAIN_TEXT.takeIf { metadataUrl.isNotEmpty() }

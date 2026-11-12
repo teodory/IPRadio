@@ -4,26 +4,13 @@ import android.content.ComponentName
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.clickable
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Divider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,13 +20,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -71,12 +55,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             val stations by catalog.stations.collectAsState()
             IPRadioTheme {
-                Surface(Modifier.fillMaxSize()) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     RadioScreen(
                         stations = stations,
                         playback = playback,
                         editor = editor,
-                        onStationClick = ::playStation,
+                        onPlayStation = ::playStation,
                         onPrevious = { controller?.seekToPrevious() },
                         onNext = { controller?.seekToNext() },
                         onStop = ::stopPlayback,
@@ -115,13 +99,10 @@ class MainActivity : ComponentActivity() {
 
     private fun playStation(station: Station) {
         val player = controller ?: return
-        if (playback.stationId == station.id && playback.active) {
-            stopPlayback()
-        } else {
-            player.setMediaItem(MediaItem.Builder().setMediaId(station.id).build())
-            player.prepare()
-            player.play()
-        }
+        if (playback.stationId == station.id && playback.active) return
+        player.setMediaItem(MediaItem.Builder().setMediaId(station.id).build())
+        player.prepare()
+        player.play()
     }
 
     private fun stopPlayback() {
@@ -138,13 +119,15 @@ class MainActivity : ComponentActivity() {
             connected = true,
             stationId = player.currentMediaItem?.mediaId,
             active = active,
+            playing = player.isPlaying,
             song = player.mediaMetadata.subtitle?.toString().orEmpty(),
             status = when {
-                player.playerError != null -> "Couldn't play this stream."
-                active && player.playbackState == Player.STATE_BUFFERING -> "Connecting to station…"
-                player.isPlaying -> "Playing"
-                active -> "Waiting for audio…"
-                player.playbackState == Player.STATE_READY -> "Paused"
+                player.playerError != null -> R.string.player_stream_error
+                active && player.playbackState == Player.STATE_BUFFERING -> R.string.player_connecting_station
+                player.isPlaying -> R.string.player_live
+                active -> R.string.player_waiting
+                player.playbackState == Player.STATE_READY -> R.string.player_paused
+                player.currentMediaItem != null -> R.string.player_stopped
                 else -> null
             }
         )
@@ -160,107 +143,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class PlaybackUiState(
+internal data class PlaybackUiState(
     val connected: Boolean = false,
     val connectionError: Boolean = false,
     val stationId: String? = null,
     val active: Boolean = false,
+    val playing: Boolean = false,
     val song: String = "",
-    val status: String? = null
+    @StringRes val status: Int? = null
 )
 
 @Composable
-private fun RadioScreen(
-    stations: List<Station>,
-    playback: PlaybackUiState,
-    editor: StationEditorState,
-    onStationClick: (Station) -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onStop: () -> Unit,
-    saveStation: suspend (String?, String, String, String, String) -> Result<Station>
-) {
-    var editMode by rememberSaveable { mutableStateOf(false) }
-    var adding by rememberSaveable { mutableStateOf(false) }
-    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
-
-    Column(Modifier.fillMaxSize().systemBarsPadding()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Stations", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-            if (editMode) {
-                IconButton(onClick = { adding = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Radio")
-                }
-            }
-            IconButton(onClick = { editMode = !editMode }) {
-                Icon(Icons.Default.Settings, contentDescription = "Settings")
-            }
-        }
-        Divider()
-        LazyColumn(Modifier.weight(1f)) {
-            items(stations, key = { it.id }) { station ->
-                val active = playback.active && playback.stationId == station.id
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = playback.connected) { onStationClick(station) }
-                        .padding(start = 12.dp, end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        station.name,
-                        modifier = Modifier.weight(1f).padding(vertical = 12.dp),
-                        color = if (active) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface
-                    )
-                    if (editMode) {
-                        IconButton(onClick = { editingId = station.id }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit ${station.name}")
-                        }
-                    }
-                }
-            }
-        }
-        Divider()
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            when {
-                playback.connectionError -> Text("Player unavailable.")
-                !playback.connected -> Text("Connecting to player…")
-                else -> {
-                    playback.status?.let { Text(it) }
-                    if (playback.song.isNotBlank()) Text(playback.song)
-                }
-            }
-            Row {
-                TextButton(onClick = onPrevious, enabled = playback.connected) { Text("Prev") }
-                TextButton(onClick = onStop, enabled = playback.connected) { Text("Stop") }
-                TextButton(onClick = onNext, enabled = playback.connected) { Text("Next") }
-            }
-        }
-    }
-
-    val editingStation = stations.firstOrNull { it.id == editingId }
-    if (adding || editingStation != null) {
-        key(editingId) {
-            StationEditor(
-                station = editingStation,
-                editor = editor,
-                onDismiss = {
-                    editor.clearResult()
-                    adding = false
-                    editingId = null
-                },
-                saveStation = saveStation
-            )
-        }
-    }
-}
-
-@Composable
-private fun StationEditor(
+internal fun StationEditor(
     station: Station?,
     editor: StationEditorState,
     onDismiss: () -> Unit,

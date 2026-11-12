@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="stations">Станции</string>
+    <string name="settings">Настройки</string>
+    <string name="add_radio">Добави станция</string>
+    <string name="edit_radio">Редактирай %1$s</string>
+    <string name="station_on_air">В ефир</string>
+    <string name="player_choose_station">Избери станция</string>
+    <string name="player_ready">Готово за пускане</string>
+    <string name="player_connecting">Свързване с плейъра…</string>
+    <string name="player_unavailable">Плейърът е недостъпен</string>
+    <string name="player_connecting_station">Свързване със станцията…</string>
+    <string name="player_waiting">Изчакване на звук…</string>
+    <string name="player_stream_error">Станцията не можа да се пусне</string>
+    <string name="player_paused">На пауза</string>
+    <string name="player_stopped">Спряно</string>
+    <string name="player_live">На живо</string>
+    <string name="player_play">Пусни радиото</string>
+    <string name="player_stop">Спри радиото</string>
+    <string name="player_previous">Предишна станция</string>
+    <string name="player_next">Следваща станция</string>
+</resources>

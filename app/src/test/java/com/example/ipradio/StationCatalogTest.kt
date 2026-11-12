@@ -70,6 +70,38 @@ class StationCatalogTest {
     }
 
     @Test
+    fun movingACustomStationPersistsItsOrderForPlaybackNavigation() = runBlocking {
+        val file = storeFile()
+        val catalog = StationCatalog(file)
+        val custom = catalog.save(null, "Custom", "https://example.org/live", "", "").getOrThrow()
+        val initial = catalog.stations.value
+
+        catalog.move(custom.id, -1).getOrThrow()
+
+        val reloaded = StationCatalog(file).stations.value
+        assertEquals(initial.dropLast(2) + listOf(custom, initial[initial.lastIndex - 1]), reloaded)
+        assertEquals(reloaded, catalog.stations.value)
+        assertEquals(custom, adjacentStation(reloaded, reloaded[reloaded.lastIndex - 2].id, 1))
+    }
+
+    @Test
+    fun failedMoveKeepsTheCurrentOrderAndCanBeRetried() = runBlocking {
+        val parent = directory.newFolder()
+        val file = File(parent, "stations.json")
+        val catalog = StationCatalog(file)
+        val initial = catalog.stations.value
+        val first = initial.first()
+        assertTrue(parent.delete())
+
+        assertTrue(catalog.move(first.id, 1).isFailure)
+        assertEquals(initial, catalog.stations.value)
+
+        assertTrue(parent.mkdir())
+        catalog.move(first.id, 1).getOrThrow()
+        assertEquals(first, StationCatalog(file).stations.value[1])
+    }
+
+    @Test
     fun acceptsUdpAudioWithAValidPort() = runBlocking {
         val file = storeFile()
         val catalog = StationCatalog(file)

@@ -41,29 +41,51 @@ class StationCatalog internal constructor(private val file: File) {
         url: String,
         image: String,
         infoDataUrl: String
-    ): Result<Station> = withContext(Dispatchers.IO) {
+    ): Result<Station> = updateStations { current ->
+        val previous = id?.let { stationId ->
+            current.firstOrNull { it.id == stationId }
+                ?: throw IllegalArgumentException("The station no longer exists.")
+        }
+        val station = validatedStation(
+            previous?.id ?: UUID.randomUUID().toString(),
+            name, url, image, infoDataUrl, defaultStationsById[id]
+        )
+        val updated = if (previous == null) {
+            current + station
+        } else {
+            current.map { if (it.id == station.id) station else it }
+        }
+        updated to station
+    }
+
+    internal suspend fun move(id: String, offset: Int): Result<Boolean> = updateStations { current ->
+        require(offset == -1 || offset == 1)
+        val from = current.indexOfFirst { it.id == id }
+        require(from >= 0) { "The station no longer exists." }
+        val to = from + offset
+        val updated = if (to in current.indices) {
+            current.toMutableList().apply { add(to, removeAt(from)) }
+        } else {
+            current
+        }
+        updated to (updated !== current)
+    }
+
+    private suspend fun <T> updateStations(
+        transform: (List<Station>) -> Pair<List<Station>, T>
+    ): Result<T> = withContext(Dispatchers.IO) {
         mutex.withLock {
             try {
                 loaded.exceptionOrNull()?.let {
                     throw IOException("The saved station catalog could not be read.", it)
                 }
                 val current = state.value
-                val previous = id?.let { stationId ->
-                    current.firstOrNull { it.id == stationId }
-                        ?: throw IllegalArgumentException("The station no longer exists.")
+                val (updated, result) = transform(current)
+                if (updated !== current) {
+                    writeStations(updated)
+                    state.value = updated
                 }
-                val station = validatedStation(
-                    previous?.id ?: UUID.randomUUID().toString(),
-                    name, url, image, infoDataUrl, defaultStationsById[id]
-                )
-                val updated = if (previous == null) {
-                    current + station
-                } else {
-                    current.map { if (it.id == station.id) station else it }
-                }
-                writeStations(updated)
-                state.value = updated
-                Result.success(station)
+                Result.success(result)
             } catch (error: IOException) {
                 Result.failure(error)
             } catch (error: IllegalArgumentException) {

@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
     private var controller: MediaController? = null
     private var playback by mutableStateOf(PlaybackUiState())
     private var musicBrainzEnabled by mutableStateOf(false)
+    private var bigPlayerEnabled by mutableStateOf(false)
     private val playbackListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             showPlayback(player)
@@ -53,6 +54,7 @@ class MainActivity : ComponentActivity() {
         val catalog = StationCatalog.getInstance(this)
         val editor = ViewModelProvider(this)[StationEditorState::class.java]
         musicBrainzEnabled = radioPreferences.getBoolean(MUSICBRAINZ_ARTWORK_ENABLED, false)
+        bigPlayerEnabled = radioPreferences.getBoolean(BIG_PLAYER_ENABLED, false)
         connectPlayer()
 
         setContent {
@@ -68,11 +70,17 @@ class MainActivity : ComponentActivity() {
                             musicBrainzEnabled = enabled
                             radioPreferences.edit().putBoolean(MUSICBRAINZ_ARTWORK_ENABLED, enabled).apply()
                         },
+                        bigPlayerEnabled = bigPlayerEnabled,
+                        onBigPlayerChanged = { enabled ->
+                            bigPlayerEnabled = enabled
+                            radioPreferences.edit().putBoolean(BIG_PLAYER_ENABLED, enabled).apply()
+                        },
                         onPlayStation = ::playStation,
                         onPrevious = { controller?.seekToPrevious() },
                         onNext = { controller?.seekToNext() },
                         onStop = ::stopPlayback,
-                        saveStation = catalog::save
+                        saveStation = catalog::save,
+                        moveStation = catalog::move
                     )
                 }
             }

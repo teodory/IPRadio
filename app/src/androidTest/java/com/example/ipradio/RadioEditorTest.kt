@@ -9,8 +9,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertTrue
 
 class RadioEditorTest {
     @get:Rule
@@ -54,6 +56,36 @@ class RadioEditorTest {
             compose.onNodeWithContentDescription("Add Radio").assertDoesNotExist()
         } finally {
             if (!initiallyOn) toggle.performClick()
+        }
+    }
+
+    @Test
+    fun bigPlayerAppearsBelowTheStationsAndSurvivesActivityRecreation() {
+        val settings = compose.onNodeWithContentDescription("Settings")
+        val toggle = compose.onNodeWithText("Big player")
+        val done = compose.onNodeWithText("Done")
+        settings.performClick()
+        val initiallyOn = toggle.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ToggleableState] ==
+            androidx.compose.ui.state.ToggleableState.On
+        if (!initiallyOn) toggle.performClick()
+        done.performClick()
+
+        try {
+            compose.activityRule.scenario.recreate()
+            val next = compose.onNodeWithContentDescription("Next station").getUnclippedBoundsInRoot()
+            compose.onNodeWithContentDescription("Edit stations").performClick()
+            val firstRowEditor = compose.onNodeWithContentDescription("Edit ZRock")
+                .getUnclippedBoundsInRoot()
+            assertTrue(firstRowEditor.bottom < next.top)
+            settings.performClick()
+            toggle.assertIsOn()
+            done.performClick()
+        } finally {
+            if (!initiallyOn) {
+                settings.performClick()
+                toggle.performClick()
+                done.performClick()
+            }
         }
     }
 

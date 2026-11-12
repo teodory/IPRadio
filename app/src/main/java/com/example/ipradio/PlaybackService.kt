@@ -1,0 +1,418 @@
+package com.example.ipradio
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.ContentResolver
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.net.Uri
+import android.os.Bundle
+import android.os.Process
+import androidx.annotation.OptIn
+import androidx.core.app.NotificationCompat
+import androidx.media.utils.MediaConstants
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaSession
+import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+@OptIn(UnstableApi::class)
+class PlaybackService : MediaLibraryService() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private lateinit var catalog: StationCatalog
+    private lateinit var player: ExoPlayer
+    private lateinit var session: MediaLibrarySession
+    private lateinit var songManager: SongManager
+    private var handlingServiceStart = false
+    private var rejectedServiceStart = false
+
+    private val playbackListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+            val station = player.currentMediaItem?.localConfiguration?.tag as? Station
+            songManager.setStation(station.takeIf { player.isPlaying })
+            if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
+                publishSongTitle(station?.id, null)
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        catalog = StationCatalog.getInstance(this)
+        player = ExoPlayer.Builder(this)
+            .setAudioAttributes(AudioAttributes.DEFAULT, true)
+            .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .build()
+        songManager = SongManager(serviceScope, publish = ::publishSongTitle)
+        player.addListener(playbackListener)
+
+        val stationPlayer = StationPlayer(player, ::skipStation)
+        val openApp = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+        )
+        session = MediaLibrarySession.Builder(this, stationPlayer, LibraryCallback())
+            .setId(UUID.randomUUID().toString())
+            .setSessionActivity(openApp)
+            .build()
+
+        serviceScope.launch {
+            catalog.stations.collect { stations ->
+                applyCatalogUpdate(stations)
+                session.notifyChildrenChanged(ROOT_ID, stations.size, null)
+            }
+        }
+    }
+
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
+        // Media3 supplies an anonymous placeholder before asking the legacy browser to connect.
+        // Only the binding path needs that placeholder; notification intents already target a session.
+        if (controllerInfo.uid < 0) {
+            if (!handlingServiceStart) return session
+            rejectedServiceStart = true
+            return null
+        }
+        return session.takeIf { isTrustedController(controllerInfo) }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        handlingServiceStart = true
+        rejectedServiceStart = false
+        val result = try {
+            super.onStartCommand(intent, flags, startId)
+        } finally {
+            handlingServiceStart = false
+        }
+        val playbackRequested = player.playWhenReady &&
+            (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING)
+        val liveMediaButton = intent?.action == Intent.ACTION_MEDIA_BUTTON && !rejectedServiceStart
+        if (playbackRequested || liveMediaButton) return result
+
+        // An expired notification or an unknown caller can launch us as a foreground service.
+        // Android requires promotion before we can stop an idle foreground service start.
+        finishRejectedStart(startId)
+        return START_NOT_STICKY
+    }
+
+    private fun finishRejectedStart(startId: Int) {
+        val appName = getString(R.string.app_name)
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(EXPIRED_ACTION_CHANNEL, appName, NotificationManager.IMPORTANCE_LOW)
+        )
+        val notification = NotificationCompat.Builder(this, EXPIRED_ACTION_CHANNEL)
+            .setSmallIcon(R.drawable.radio_48px)
+            .setContentTitle(appName)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_DEFERRED)
+            .build()
+
+        try {
+            startForeground(EXPIRED_ACTION_NOTIFICATION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (_: IllegalStateException) {
+            // An ordinary background start might have no permission to promote itself.
+        } finally {
+            stopSelf(startId)
+        }
+    }
+
+    override fun onDestroy() {
+        serviceScope.cancel()
+        player.removeListener(playbackListener)
+        session.release()
+        player.release()
+        super.onDestroy()
+    }
+
+    private fun skipStation(offset: Int) {
+        val station = adjacentStation(catalog.stations.value, player.currentMediaItem?.mediaId, offset)
+            ?: return
+        player.setMediaItem(station.mediaItem(playableSource = true))
+        player.prepare()
+        player.play()
+    }
+
+    private fun applyCatalogUpdate(stations: List<Station>) {
+        val item = player.currentMediaItem ?: return
+        val previous = item.localConfiguration?.tag as? Station ?: return
+        val station = stations.firstOrNull { it.id == previous.id }
+        if (station == previous) return
+        if (station == null) {
+            player.pause()
+            player.stop()
+            player.clearMediaItems()
+            return
+        }
+
+        if (station.url != previous.url) {
+            songManager.setStation(null)
+            val shouldPrepare = player.playbackState == Player.STATE_BUFFERING ||
+                player.playbackState == Player.STATE_READY
+            if (!shouldPrepare) player.pause()
+            player.setMediaItem(station.mediaItem(playableSource = true))
+            if (shouldPrepare) player.prepare()
+        } else {
+            val sameMetadataSource = station.infoDataUrl == previous.infoDataUrl &&
+                station.metadataFormat == previous.metadataFormat
+            if (!sameMetadataSource) songManager.setStation(null)
+            val title = item.mediaMetadata.subtitle?.toString().takeIf { sameMetadataSource }
+            player.replaceMediaItem(0, station.mediaItem(playableSource = true, songTitle = title))
+        }
+    }
+
+    private fun publishSongTitle(stationId: String?, title: String?) {
+        val item = player.currentMediaItem ?: return
+        if (item.mediaId != stationId || item.mediaMetadata.subtitle == title) return
+        if (title != null && !player.isPlaying) return
+
+        // The URI and playback configuration stay identical, so ExoPlayer updates the source in place.
+        val metadata = item.mediaMetadata.buildUpon().setSubtitle(title).setArtist(title).build()
+        player.replaceMediaItem(0, item.buildUpon().setMediaMetadata(metadata).build())
+    }
+
+    private fun isTrustedController(controller: MediaSession.ControllerInfo): Boolean {
+        if (controller.uid == Process.myUid() || controller.uid == Process.SYSTEM_UID) return true
+        if (controller.uid < 0) return false
+        val info = try {
+            packageManager.getApplicationInfo(controller.packageName, 0)
+        } catch (_: PackageManager.NameNotFoundException) {
+            return false
+        }
+        if (info.uid != controller.uid) return false
+        val certificates = GOOGLE_MEDIA_CLIENTS[controller.packageName]
+        return if (certificates != null) {
+            certificates.any { certificate ->
+                packageManager.hasSigningCertificate(
+                    controller.packageName, certificate, PackageManager.CERT_INPUT_SHA256
+                )
+            }
+        } else {
+            info.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+        }
+    }
+
+    private fun Station.mediaItem(playableSource: Boolean = false, songTitle: String? = null): MediaItem {
+        val artwork = if (playableSource && image.isNotBlank()) {
+            Uri.parse(image)
+        } else {
+            val resource = logo.takeIf { it != 0 } ?: R.drawable.radio_224dp_sz48
+            Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/$resource")
+        }
+        return MediaItem.Builder()
+            .setMediaId(id)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(name)
+                    .setDisplayTitle(name)
+                    .setSubtitle(songTitle)
+                    .setArtist(songTitle)
+                    .setArtworkUri(artwork)
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
+                    .build()
+            )
+            .apply { if (playableSource) setUri(url).setTag(this@mediaItem) }
+            .build()
+    }
+
+    private inner class LibraryCallback : MediaLibrarySession.Callback {
+        private val root = MediaItem.Builder()
+            .setMediaId(ROOT_ID)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(getString(R.string.app_name))
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_RADIO_STATIONS)
+                    .build()
+            )
+            .build()
+
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): MediaSession.ConnectionResult {
+            if (!isTrustedController(controller)) return MediaSession.ConnectionResult.reject()
+            val commands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
+                .remove(Player.COMMAND_CHANGE_MEDIA_ITEMS)
+                .remove(Player.COMMAND_SET_REPEAT_MODE)
+                .remove(Player.COMMAND_SET_SHUFFLE_MODE)
+                .build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailablePlayerCommands(commands)
+                .build()
+        }
+
+        override fun onMediaButtonEvent(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            intent: Intent
+        ): Boolean {
+            // Media3 resolves notification intents to a live session URI before reaching this
+            // callback. Platform media-button dispatch supplies a caller UID and can bypass onConnect.
+            val notificationAction = controllerInfo.uid < 0 &&
+                controllerInfo.packageName == packageName && intent.data != null
+            return !notificationAction && !isTrustedController(controllerInfo)
+        }
+
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: List<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val request = mediaItems.singleOrNull()
+                ?: return Futures.immediateFailedFuture(IllegalArgumentException("Select one station"))
+            val stations = catalog.stations.value
+            val query = request.requestMetadata.searchQuery
+            val station = when {
+                request.requestMetadata.mediaUri != null -> null
+                query == null -> stations.firstOrNull { it.id == request.mediaId }
+                query.isBlank() -> stations.firstOrNull { it.id == player.currentMediaItem?.mediaId }
+                    ?: stations.firstOrNull()
+                else -> findStations(stations, query).firstOrNull()
+            } ?: return Futures.immediateFailedFuture(IllegalArgumentException("Unknown station"))
+            return Futures.immediateFuture(playbackSelection(station))
+        }
+
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val station = catalog.stations.value.firstOrNull()
+                ?: return Futures.immediateFailedFuture(IllegalStateException("No stations available"))
+            return Futures.immediateFuture(playbackSelection(station))
+        }
+
+        private fun playbackSelection(station: Station) = MediaSession.MediaItemsWithStartPosition(
+            listOf(station.mediaItem(playableSource = true)), C.INDEX_UNSET, C.TIME_UNSET
+        )
+
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            val extras = Bundle().apply {
+                putBoolean(MediaConstants.BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED, true)
+                putInt(
+                    MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
+                    MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+                )
+            }
+            return Futures.immediateFuture(
+                LibraryResult.ofItem(root, LibraryParams.Builder().setExtras(extras).build())
+            )
+        }
+
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            val item = if (mediaId == ROOT_ID) root else {
+                catalog.stations.value.firstOrNull { it.id == mediaId }?.mediaItem()
+            }
+            return Futures.immediateFuture(
+                item?.let { LibraryResult.ofItem(it, null) }
+                    ?: LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+            )
+        }
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            if (parentId != ROOT_ID) {
+                return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
+            }
+            return stationPage(catalog.stations.value, page, pageSize, params)
+        }
+
+        override fun onSearch(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<Void>> {
+            session.notifySearchResultChanged(browser, query, findStations(catalog.stations.value, query).size, params)
+            return Futures.immediateFuture(LibraryResult.ofVoid())
+        }
+
+        override fun onGetSearchResult(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
+            stationPage(findStations(catalog.stations.value, query), page, pageSize, params)
+
+        private fun stationPage(
+            stations: List<Station>,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            val start = (page.toLong() * pageSize).coerceAtMost(stations.size.toLong()).toInt()
+            val end = (start.toLong() + pageSize).coerceAtMost(stations.size.toLong()).toInt()
+            return Futures.immediateFuture(
+                LibraryResult.ofItemList(stations.subList(start, end).map { it.mediaItem() }, params)
+            )
+        }
+    }
+
+    private companion object {
+        const val ROOT_ID = "com.example.ipradio.ROOT"
+        const val EXPIRED_ACTION_CHANNEL = "expired_playback_action"
+        const val EXPIRED_ACTION_NOTIFICATION = 1002
+
+        // Production APK certificates and Android Auto's rotated release key from Android's UAMP sample.
+        val GOOGLE_MEDIA_CLIENTS = mapOf(
+            "com.google.android.projection.gearhead" to listOf(
+                "fdb00c43dbde8b51cb312aa81d3b5fa17713adb94b28f598d77f8eb89daceedf",
+                "1ca8dcc0bed3cbd872d2cb791200c0292ca9975768a82d676b8b424fb65b5295"
+            ),
+            "com.google.android.googlequicksearchbox" to listOf(
+                "f0fd6c5b410f25cb25c3b53346c8972fae30f8ee7411df910480ad6b2d60db83"
+            ),
+            "com.google.android.carassistant" to listOf(
+                "74b6fbf710e8d90d44d340125889b42306a62c4379d0e5a66220e3a68abf90e2"
+            )
+        ).mapValues { (_, fingerprints) ->
+            fingerprints.map { hex -> hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray() }
+        }
+    }
+}
+
+internal fun findStations(stations: List<Station>, query: String): List<Station> {
+    val name = query.trim()
+    if (name.isEmpty()) return emptyList()
+    return stations.filter { it.name.contains(name, ignoreCase = true) }
+        .sortedByDescending { it.name.equals(name, ignoreCase = true) }
+}

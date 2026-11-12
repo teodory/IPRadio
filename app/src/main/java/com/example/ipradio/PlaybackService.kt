@@ -20,7 +20,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -58,7 +61,16 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         catalog = StationCatalog.getInstance(this)
+        val dataSourceFactory = ResolvingDataSource.Factory(DefaultDataSource.Factory(this)) { request ->
+            // Radio Antena rejects stream requests without its website as the Referer.
+            if (request.uri.toString() == RADIO_ANTENA_STREAM_URL) {
+                request.withAdditionalHeaders(mapOf("Referer" to "https://radioantena.bg/"))
+            } else {
+                request
+            }
+        }
         player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(AudioAttributes.DEFAULT, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)

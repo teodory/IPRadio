@@ -12,6 +12,8 @@ data class Station(
 
 enum class MetadataFormat { ZROCK, METACAST, MAGIC, FLUMOTION, PLAIN_TEXT }
 
+internal const val RADIO_ANTENA_STREAM_URL = "https://live.radioantena.bg/RadioAntena"
+
 internal val defaultStations = listOf(
     Station(
         "zrock", "ZRock",
@@ -75,6 +77,11 @@ internal val defaultStations = listOf(
         "melody", "Melody",
         "http://193.108.24.6:8000/melody?file=.mp3",
         "https://radiomelody.bg/i/logo.png"
+    ),
+    Station(
+        "radio-antena", "Радио Антена",
+        RADIO_ANTENA_STREAM_URL,
+        "https://radioantena.bg/radio-antena-logo.jpg"
     )
 )
 

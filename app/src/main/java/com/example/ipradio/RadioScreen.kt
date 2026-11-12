@@ -1,5 +1,6 @@
 package com.example.ipradio
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -10,25 +11,31 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,12 +48,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -60,6 +71,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun RadioScreen(
@@ -68,26 +81,54 @@ internal fun RadioScreen(
     editor: StationEditorState,
     musicBrainzEnabled: Boolean,
     onMusicBrainzChanged: (Boolean) -> Unit,
+    bigPlayerEnabled: Boolean,
+    onBigPlayerChanged: (Boolean) -> Unit,
     onPlayStation: (Station) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onStop: () -> Unit,
-    saveStation: suspend (String?, String, String, String, String) -> Result<Station>
+    saveStation: suspend (String?, String, String, String, String) -> Result<Station>,
+    moveStation: suspend (String, Int) -> Result<Boolean>
 ) {
     var editMode by rememberSaveable { mutableStateOf(false) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var adding by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var moving by remember { mutableStateOf(false) }
+    var moveFailed by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     val selectedIndex = stations.indexOfFirst { it.id == playback.stationId }
-    LaunchedEffect(selectedIndex) {
-        if (selectedIndex < 0) return@LaunchedEffect
+    LaunchedEffect(selectedIndex, editMode, bigPlayerEnabled) {
+        if (editMode || selectedIndex < 0) return@LaunchedEffect
         val layout = listState.layoutInfo
         val item = layout.visibleItemsInfo.firstOrNull { it.index == selectedIndex }
         if (item == null || item.offset < layout.viewportStartOffset ||
             item.offset + item.size > layout.viewportEndOffset
         ) {
             listState.animateScrollToItem(selectedIndex)
+        }
+    }
+
+    fun move(index: Int, id: String, offset: Int) {
+        if (moving) return
+        moving = true
+        val firstSwappedIndex = minOf(index, index + offset)
+        val revealBoth = listState.firstVisibleItemIndex in firstSwappedIndex..(firstSwappedIndex + 1)
+        scope.launch {
+            try {
+                val result = moveStation(id, offset)
+                if (result.isFailure) {
+                    moveFailed = true
+                } else if (revealBoth && result.getOrDefault(false)) {
+                    // Wait for the keyed list to apply the new order before resetting its scroll anchor.
+                    snapshotFlow { listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == id }?.index }
+                        .first { it != index }
+                    if (editMode) listState.scrollToItem(firstSwappedIndex)
+                }
+            } finally {
+                moving = false
+            }
         }
     }
 
@@ -129,6 +170,7 @@ internal fun RadioScreen(
             ) {
                 Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_stations))
             }
+            Spacer(Modifier.width(8.dp))
             IconButton(
                 onClick = { settingsOpen = true },
                 modifier = Modifier.clip(RoundedCornerShape(14.dp))
@@ -143,7 +185,7 @@ internal fun RadioScreen(
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 6.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            items(stations, key = { it.id }) { station ->
+            itemsIndexed(stations, key = { _, station -> station.id }) { index, station ->
                 val selected = playback.stationId == station.id
                 StationRow(
                     station = station,
@@ -151,14 +193,17 @@ internal fun RadioScreen(
                     onAir = selected && playback.playing,
                     enabled = playback.connected,
                     onPlay = { onPlayStation(station) },
-                    onEdit = if (editMode) ({ editingId = station.id }) else null
+                    onEdit = if (editMode) ({ editingId = station.id }) else null,
+                    onMoveUp = if (editMode && !moving && index > 0) ({ move(index, station.id, -1) }) else null,
+                    onMoveDown = if (editMode && !moving && index < stations.lastIndex) ({ move(index, station.id, 1) }) else null
                 )
             }
         }
         val station = stations.getOrNull(selectedIndex) ?: stations.firstOrNull()
-        MiniPlayer(
+        PlayerCard(
             station = station,
             playback = playback,
+            big = bigPlayerEnabled,
             onPrevious = onPrevious,
             onNext = onNext,
             onToggle = { if (playback.active) onStop() else station?.let(onPlayStation) }
@@ -170,27 +215,31 @@ internal fun RadioScreen(
             onDismissRequest = { settingsOpen = false },
             title = { Text(stringResource(R.string.settings)) },
             text = {
-                Row(
-                    modifier = Modifier.fillMaxWidth().toggleable(
-                        value = musicBrainzEnabled,
-                        role = Role.Switch,
-                        onValueChange = onMusicBrainzChanged
-                    ),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.musicbrainz_artwork))
-                        Text(
-                            stringResource(R.string.musicbrainz_artwork_description),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                    Switch(checked = musicBrainzEnabled, onCheckedChange = null)
+                    SettingsSwitch(R.string.big_player, bigPlayerEnabled, onBigPlayerChanged)
+                    SettingsSwitch(
+                        R.string.musicbrainz_artwork,
+                        musicBrainzEnabled,
+                        onMusicBrainzChanged,
+                        description = R.string.musicbrainz_artwork_description
+                    )
                 }
             },
             confirmButton = {
                 TextButton(onClick = { settingsOpen = false }) { Text(stringResource(R.string.close_settings)) }
+            }
+        )
+    }
+
+    if (moveFailed) {
+        AlertDialog(
+            onDismissRequest = { moveFailed = false },
+            text = { Text(stringResource(R.string.station_order_error)) },
+            confirmButton = {
+                TextButton(onClick = { moveFailed = false }) { Text(stringResource(android.R.string.ok)) }
             }
         )
     }
@@ -213,13 +262,38 @@ internal fun RadioScreen(
 }
 
 @Composable
+private fun SettingsSwitch(
+    @StringRes title: Int,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    @StringRes description: Int? = null
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(title))
+            if (description != null) {
+                Text(stringResource(description), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+@Composable
 private fun StationRow(
     station: Station,
     isSelected: Boolean,
     onAir: Boolean,
     enabled: Boolean,
     onPlay: () -> Unit,
-    onEdit: (() -> Unit)?
+    onEdit: (() -> Unit)?,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?
 ) {
     val colors = MaterialTheme.colorScheme
     Row(
@@ -240,7 +314,7 @@ private fun StationRow(
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
         )
-        if (onAir) {
+        if (onAir && onEdit == null) {
             Text(
                 stringResource(R.string.station_on_air),
                 color = colors.primary,
@@ -248,22 +322,37 @@ private fun StationRow(
             )
         }
         if (onEdit != null) {
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_radio, station.name))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_radio, station.name))
+                }
+                IconButton(onClick = { onMoveUp?.invoke() }, enabled = onMoveUp != null) {
+                    Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.move_station_up, station.name))
+                }
+                IconButton(onClick = { onMoveDown?.invoke() }, enabled = onMoveDown != null) {
+                    Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.move_station_down, station.name))
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MiniPlayer(
+private fun PlayerCard(
     station: Station?,
     playback: PlaybackUiState,
+    big: Boolean,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onToggle: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
+    val stackedBigPlayer = big && LocalConfiguration.current.screenHeightDp >= 420
+    val artworkSize = when {
+        stackedBigPlayer -> 80.dp
+        big -> 56.dp
+        else -> 38.dp
+    }
     val enabled = playback.connected && station != null
     val canSkip = enabled && playback.stationId != null
     val subtitle = when {
@@ -278,16 +367,20 @@ private fun MiniPlayer(
         Row(
             modifier = modifier,
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (big) 14.dp else 7.dp)
         ) {
-            StationArtwork(station, 38.dp, playback.songArtwork.takeIf { playback.playing })
+            StationArtwork(station, artworkSize, playback.songArtwork.takeIf { playback.playing })
             Column(
                 modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     station?.name ?: stringResource(R.string.player_choose_station),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = when {
+                        stackedBigPlayer -> MaterialTheme.typography.headlineSmall
+                        big -> MaterialTheme.typography.titleMedium
+                        else -> MaterialTheme.typography.titleSmall
+                    },
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -299,7 +392,7 @@ private fun MiniPlayer(
                         }
                         Text(
                             subtitle,
-                            style = MaterialTheme.typography.bodySmall,
+                            style = if (big) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
                             color = if (playback.status == R.string.player_stream_error) colors.error else colors.onSurfaceVariant,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
@@ -310,11 +403,15 @@ private fun MiniPlayer(
         }
     }
     val controls: @Composable (Modifier) -> Unit = { modifier ->
-        Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (stackedBigPlayer) 12.dp else 0.dp)
+        ) {
             IconButton(onClick = onPrevious, enabled = canSkip) {
                 Icon(painterResource(R.drawable.ic_skip_previous), stringResource(R.string.player_previous))
             }
-            FilledIconButton(onClick = onToggle, enabled = enabled, modifier = Modifier.size(48.dp)) {
+            FilledIconButton(onClick = onToggle, enabled = enabled, modifier = Modifier.size(if (big) 56.dp else 48.dp)) {
                 if (playback.active) {
                     Icon(painterResource(R.drawable.ic_stop), stringResource(R.string.player_stop))
                 } else {
@@ -333,8 +430,18 @@ private fun MiniPlayer(
         border = BorderStroke(1.dp, colors.outlineVariant),
         shadowElevation = 2.dp
     ) {
-        BoxWithConstraints(Modifier.padding(start = 9.dp, end = 4.dp, top = 7.dp, bottom = 7.dp)) {
-            if (maxWidth < 320.dp || LocalDensity.current.fontScale > 1.25f) {
+        val padding = if (big) PaddingValues(14.dp) else PaddingValues(start = 9.dp, end = 4.dp, top = 7.dp, bottom = 7.dp)
+        BoxWithConstraints(Modifier.padding(padding)) {
+            if (stackedBigPlayer) {
+                Column(
+                    Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    stationDetails(Modifier.fillMaxWidth())
+                    controls(Modifier)
+                }
+            } else if (maxWidth < 320.dp || LocalDensity.current.fontScale > 1.25f) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     stationDetails(Modifier.fillMaxWidth().padding(end = 5.dp))
                     controls(Modifier.align(Alignment.End))

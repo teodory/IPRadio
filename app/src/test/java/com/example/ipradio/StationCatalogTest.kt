@@ -22,10 +22,10 @@ class StationCatalogTest {
         val stations = StationCatalog(storeFile()).stations.value
         assertEquals(
             listOf("ZRock", "1Rock", "Darik", "FM+", "Magic FM", "Tangra Mega Rock",
-                "RockFM", "Cadena100", "SoftRockRadio.net", "Melody"),
+                "RockFM", "Cadena100", "SoftRockRadio.net", "Melody", "Радио Антена"),
             stations.map { it.name }
         )
-        assertEquals(10, stations.map { it.id }.toSet().size)
+        assertEquals(stations.size, stations.map { it.id }.toSet().size)
         assertEquals(stations, StationCatalog(storeFile()).stations.value)
     }
 
@@ -54,6 +54,7 @@ class StationCatalogTest {
     fun concurrentAddsKeepBothStationsAndAssignDistinctIds() = runBlocking {
         val file = storeFile()
         val catalog = StationCatalog(file)
+        val initialCount = catalog.stations.value.size
         val (first, second) = listOf("http://example.org/live", "rtsp://example.org/live").map { url ->
             async { catalog.save(null, "RockFM", url, "", "").getOrThrow() }
         }.awaitAll()
@@ -64,7 +65,7 @@ class StationCatalogTest {
         assertNull(first.metadataFormat)
         assertEquals(0, first.logo)
         val reloaded = StationCatalog(file).stations.value
-        assertEquals(12, reloaded.size)
+        assertEquals(initialCount + 2, reloaded.size)
         assertTrue(reloaded.containsAll(listOf(first, second)))
     }
 
@@ -110,7 +111,8 @@ class StationCatalogTest {
         assertEquals("Renamed", loaded.first { it.id == "zrock" }.name)
         assertTrue(loaded.any { it.name == "Custom" })
         assertTrue(loaded.any { it.name == "Melody" })
-        assertEquals(11, loaded.size)
+        assertEquals("https://live.radioantena.bg/RadioAntena", loaded.firstOrNull { it.id == "radio-antena" }?.url)
+        assertEquals(defaultStations.size + 1, loaded.size)
         assertTrue(catalog.save(null, "Another", "https://example.org/live", "", "").isSuccess)
     }
 
@@ -142,7 +144,7 @@ class StationCatalogTest {
         val catalog = StationCatalog(file)
         val initial = catalog.stations.value
 
-        assertEquals(10, initial.size)
+        assertEquals(defaultStations, initial)
         assertTrue(catalog.save(null, "Station", "https://example.org/live", "", "").isFailure)
         assertEquals(initial, catalog.stations.value)
         assertEquals(damaged, file.readText())

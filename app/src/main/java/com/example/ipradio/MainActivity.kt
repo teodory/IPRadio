@@ -1,287 +1,333 @@
 package com.example.ipradio
 
+import android.content.ComponentName
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.Text
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.ipradio.ui.theme.IPRadioTheme
-import android.content.res.Configuration
-
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Observer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
-import androidx.compose.material3.Divider
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.fillMaxWidth
-
-import com.example.ipradio.RadioData.Radio
-
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.example.ipradio.ui.theme.IPRadioTheme
+import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    private var songInfo by mutableStateOf<String>("Empty...")
-    private lateinit var playbackManager: PlaybackManager
-
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controller: MediaController? = null
+    private var playback by mutableStateOf(PlaybackUiState())
+    private val playbackListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+            showPlayback(player)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        this.playbackManager = PlaybackManager.getInstance(this)
-        // Show played song info
-        playbackManager.songInfo.observe(this, Observer {it ->
-            songInfo = it.toString()
-        })
-
+        val catalog = StationCatalog.getInstance(this)
+        val editor = ViewModelProvider(this)[StationEditorState::class.java]
+        connectPlayer()
 
         setContent {
+            val stations by catalog.stations.collectAsState()
             IPRadioTheme {
-                var showDialog by remember { mutableStateOf(false) }
-                var showAddDialog by remember { mutableStateOf(false) }
-                var radioToEdit by remember { mutableStateOf<Radio?>(null) }
-                var isEditMode by remember { mutableStateOf(false) }
-
-                if (showDialog && radioToEdit != null) {
-                    EditRadioDialog(
-                        radio = radioToEdit!!,
-                        onDismiss = { showDialog = false },
-                        onSave = { newRadio ->
-                            val index = playbackManager.getRadiosList().indexOf(radioToEdit!!)
-                            if (index != -1) {
-                                playbackManager.updateRadio(index, newRadio)
-                            }
-                            showDialog = false
-                        }
+                Surface(Modifier.fillMaxSize()) {
+                    RadioScreen(
+                        stations = stations,
+                        playback = playback,
+                        editor = editor,
+                        onStationClick = ::playStation,
+                        onPrevious = { controller?.seekToPrevious() },
+                        onNext = { controller?.seekToNext() },
+                        onStop = ::stopPlayback,
+                        saveStation = catalog::save
                     )
-                }
-
-                if (showAddDialog) {
-                    AddRadioDialog(
-                        onDismiss = { showAddDialog = false },
-                        onSave = { newRadio ->
-                            playbackManager.addRadio(newRadio)
-                            showAddDialog = false
-                        }
-                    )
-                }
-
-                Column(modifier = Modifier.padding(bottom = 48.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        if (isEditMode) {
-                            IconButton(onClick = { showAddDialog = true }) {
-                                Icon(Icons.Default.Add, contentDescription = "Add Radio")
-                            }
-                        }
-                        IconButton(onClick = { isEditMode = !isEditMode }) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings")
-                        }
-                    }
-                    Divider(color = Color.Gray, thickness = 1.dp)
-
-                    ShowRadioList(
-                        radios = playbackManager.getRadiosList(),
-                        isEditMode = isEditMode,
-                        onEditClick = { radio ->
-                            radioToEdit = radio
-                            showDialog = true
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    Row {
-                        Button(
-                            onClick = {
-                                playbackManager.playPrevRadio()
-                            },
-                            modifier = Modifier.padding(horizontal = 3.dp)
-                        )
-                        {
-                            Text("Prev")
-                        }
-                        Button(onClick = {
-                            playbackManager.stop()
-                        }, modifier = Modifier.padding(horizontal = 3.dp)) {
-                            Text("Stop")
-                        }
-                        Button(
-                            onClick = {
-                                playbackManager.playNextRadio()
-                            },
-                            modifier = Modifier.padding(horizontal = 3.dp)
-                        )
-                        {
-                            Text("Next")
-                        }
-                    }
-                    Row {
-                        Text(
-                            text = songInfo,
-                            modifier = Modifier
-                        )
-                    }
                 }
             }
         }
+    }
+
+    private fun connectPlayer() {
+        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        val future = MediaController.Builder(this, token)
+            .setListener(object : MediaController.Listener {
+                override fun onDisconnected(controller: MediaController) {
+                    if (this@MainActivity.controller === controller) {
+                        this@MainActivity.controller = null
+                        playback = PlaybackUiState(connectionError = true)
+                    }
+                }
+            })
+            .buildAsync()
+        controllerFuture = future
+        future.addListener({
+            if (controllerFuture === future) {
+                runCatching { future.get() }
+                    .onSuccess { player ->
+                        controller = player
+                        player.addListener(playbackListener)
+                        showPlayback(player)
+                    }
+                    .onFailure { playback = PlaybackUiState(connectionError = true) }
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun playStation(station: Station) {
+        val player = controller ?: return
+        if (playback.stationId == station.id && playback.active) {
+            stopPlayback()
+        } else {
+            player.setMediaItem(MediaItem.Builder().setMediaId(station.id).build())
+            player.prepare()
+            player.play()
+        }
+    }
+
+    private fun stopPlayback() {
+        controller?.apply {
+            pause()
+            stop()
+        }
+    }
+
+    private fun showPlayback(player: Player) {
+        val active = player.playWhenReady &&
+            (player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_READY)
+        playback = PlaybackUiState(
+            connected = true,
+            stationId = player.currentMediaItem?.mediaId,
+            active = active,
+            song = player.mediaMetadata.subtitle?.toString().orEmpty(),
+            status = when {
+                player.playerError != null -> "Couldn't play this stream."
+                active && player.playbackState == Player.STATE_BUFFERING -> "Connecting to station…"
+                player.isPlaying -> "Playing"
+                active -> "Waiting for audio…"
+                player.playbackState == Player.STATE_READY -> "Paused"
+                else -> null
+            }
+        )
     }
 
     override fun onDestroy() {
+        controller?.removeListener(playbackListener)
+        val future = controllerFuture
+        controllerFuture = null
+        controller = null
+        future?.let(MediaController::releaseFuture)
         super.onDestroy()
-        playbackManager.stop()
     }
+}
 
-    @Composable
-    fun ShowRadioList(radios: List<Radio>, isEditMode: Boolean, onEditClick: (Radio) -> Unit, modifier: Modifier = Modifier) {
-        LazyColumn(modifier = modifier) {
-            items(radios) { radio ->
-                RadioCard(radio, isEditMode = isEditMode, onEditClick = { onEditClick(radio) })
+private data class PlaybackUiState(
+    val connected: Boolean = false,
+    val connectionError: Boolean = false,
+    val stationId: String? = null,
+    val active: Boolean = false,
+    val song: String = "",
+    val status: String? = null
+)
+
+@Composable
+private fun RadioScreen(
+    stations: List<Station>,
+    playback: PlaybackUiState,
+    editor: StationEditorState,
+    onStationClick: (Station) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onStop: () -> Unit,
+    saveStation: suspend (String?, String, String, String, String) -> Result<Station>
+) {
+    var editMode by rememberSaveable { mutableStateOf(false) }
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    Column(Modifier.fillMaxSize().systemBarsPadding()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Stations", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+            if (editMode) {
+                IconButton(onClick = { adding = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Radio")
+                }
+            }
+            IconButton(onClick = { editMode = !editMode }) {
+                Icon(Icons.Default.Settings, contentDescription = "Settings")
             }
         }
-    }
-
-    @Composable
-    fun RadioCard(radio: Radio, isEditMode: Boolean, onEditClick: () -> Unit) {
-
-        Row(modifier = Modifier.padding(all = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = radio.name,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable {
-                        if (playbackManager.selectedRadio == radio) {
-                            // If the same radio is selected, stop the player
-                            playbackManager.stop()
-                            // Set selectedRadio to null since no radio is currently selected
-                            playbackManager.selectedRadio = null
-                        } else {
-                            // If a different radio is selected, play the new radio
-                            playbackManager.play(radio)
+        Divider()
+        LazyColumn(Modifier.weight(1f)) {
+            items(stations, key = { it.id }) { station ->
+                val active = playback.active && playback.stationId == station.id
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = playback.connected) { onStationClick(station) }
+                        .padding(start = 12.dp, end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        station.name,
+                        modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+                        color = if (active) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                    if (editMode) {
+                        IconButton(onClick = { editingId = station.id }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit ${station.name}")
                         }
-                    },
-                color = if (playbackManager.selectedRadio == radio) Color.Red else Color.Black
+                    }
+                }
+            }
+        }
+        Divider()
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            when {
+                playback.connectionError -> Text("Player unavailable.")
+                !playback.connected -> Text("Connecting to player…")
+                else -> {
+                    playback.status?.let { Text(it) }
+                    if (playback.song.isNotBlank()) Text(playback.song)
+                }
+            }
+            Row {
+                TextButton(onClick = onPrevious, enabled = playback.connected) { Text("Prev") }
+                TextButton(onClick = onStop, enabled = playback.connected) { Text("Stop") }
+                TextButton(onClick = onNext, enabled = playback.connected) { Text("Next") }
+            }
+        }
+    }
+
+    val editingStation = stations.firstOrNull { it.id == editingId }
+    if (adding || editingStation != null) {
+        key(editingId) {
+            StationEditor(
+                station = editingStation,
+                editor = editor,
+                onDismiss = {
+                    editor.clearResult()
+                    adding = false
+                    editingId = null
+                },
+                saveStation = saveStation
             )
-            if (isEditMode) {
-                IconButton(onClick = onEditClick) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit")
-                }
-            }
         }
     }
+}
 
-    @Composable
-    fun EditRadioDialog(
-        radio: Radio,
-        onDismiss: () -> Unit,
-        onSave: (Radio) -> Unit
-    ) {
-        var name by remember { mutableStateOf(radio.name) }
-        var url by remember { mutableStateOf(radio.url) }
-        var image by remember { mutableStateOf(radio.image) }
-        var infoDataUrl by remember { mutableStateOf(radio.infoDataUrl) }
+@Composable
+private fun StationEditor(
+    station: Station?,
+    editor: StationEditorState,
+    onDismiss: () -> Unit,
+    saveStation: suspend (String?, String, String, String, String) -> Result<Station>
+) {
+    var name by rememberSaveable { mutableStateOf(station?.name.orEmpty()) }
+    var url by rememberSaveable { mutableStateOf(station?.url.orEmpty()) }
+    var image by rememberSaveable { mutableStateOf(station?.image.orEmpty()) }
+    var infoUrl by rememberSaveable { mutableStateOf(station?.infoDataUrl.orEmpty()) }
+    val saving = editor.saving
+    val error = editor.result?.exceptionOrNull()
+    LaunchedEffect(editor.result) {
+        if (editor.result?.isSuccess == true) onDismiss()
+    }
 
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("Edit Radio") },
-            text = {
-                Column {
-                    TextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
-                    TextField(value = url, onValueChange = { url = it }, label = { Text("URL") })
-                    TextField(value = image, onValueChange = { image = it }, label = { Text("Image URL") })
-                    TextField(value = infoDataUrl, onValueChange = { infoDataUrl = it }, label = { Text("Info URL") })
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onSave(radio.copy(name = name, url = url, image = image, infoDataUrl = infoDataUrl))
-                }) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                Button(onClick = onDismiss) {
-                    Text("Cancel")
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text(if (station == null) "Add New Radio" else "Edit Radio") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                TextField(name, { name = it }, enabled = !saving, label = { Text("Name") }, singleLine = true)
+                TextField(url, { url = it }, enabled = !saving, label = { Text("URL") }, singleLine = true)
+                TextField(image, { image = it }, enabled = !saving, label = { Text("Image URL") }, singleLine = true)
+                TextField(infoUrl, { infoUrl = it }, enabled = !saving, label = { Text("Info URL") }, singleLine = true)
+                if (error != null) {
+                    Text(error.localizedMessage ?: "Couldn't save station.", color = MaterialTheme.colorScheme.error)
                 }
             }
-        )
-    }
-
-    @Composable
-    fun AddRadioDialog(
-        onDismiss: () -> Unit,
-        onSave: (Radio) -> Unit
-    ) {
-        var name by remember { mutableStateOf("") }
-        var url by remember { mutableStateOf("") }
-        var image by remember { mutableStateOf("") }
-        var infoDataUrl by remember { mutableStateOf("") }
-
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("Add New Radio") },
-            text = {
-                Column {
-                    TextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
-                    TextField(value = url, onValueChange = { url = it }, label = { Text("URL") })
-                    TextField(value = image, onValueChange = { image = it }, label = { Text("Image URL") })
-                    TextField(value = infoDataUrl, onValueChange = { infoDataUrl = it }, label = { Text("Info URL") })
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onSave(Radio(name = name, url = url, image = image, infoDataUrl = infoDataUrl, songAuthor = "", logo = 0, headers = emptyMap()))
-                }) {
-                    Text("Add")
-                }
-            },
-            dismissButton = {
-                Button(onClick = onDismiss) {
-                    Text("Cancel")
-                }
+        },
+        confirmButton = {
+            Button(
+                enabled = !saving,
+                onClick = { editor.save(station?.id, name, url, image, infoUrl, saveStation) }
+            ) {
+                Text(if (station == null) "Add" else "Save")
             }
-        )
-    }
-
-
-    @Composable
-    fun Greeting(name: String) {
-        Text(text = "Hello $name!")
-    }
-
-    @Preview(name = "Light Mode")
-    @Preview(
-        uiMode = Configuration.UI_MODE_NIGHT_YES,
-        showBackground = true,
-        name = "Dark Mode"
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !saving) { Text("Cancel") }
+        }
     )
-    @Composable
-    fun GreetingPreview() {
-        IPRadioTheme {
-            Greeting("Androida")
+}
+
+internal class StationEditorState : ViewModel() {
+    var saving by mutableStateOf(false)
+        private set
+    var result by mutableStateOf<Result<Station>?>(null)
+        private set
+
+    fun save(
+        id: String?,
+        name: String,
+        url: String,
+        image: String,
+        infoUrl: String,
+        saveStation: suspend (String?, String, String, String, String) -> Result<Station>
+    ) {
+        if (saving) return
+        saving = true
+        result = null
+        viewModelScope.launch {
+            result = saveStation(id, name, url, image, infoUrl)
+            saving = false
         }
     }
 
-
-
-
+    fun clearResult() {
+        result = null
+    }
 }

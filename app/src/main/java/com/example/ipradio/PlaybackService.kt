@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ContentResolver
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
@@ -18,12 +19,15 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Metadata
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.metadata.icy.IcyInfo
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -47,13 +51,35 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var songManager: SongManager
     private var handlingServiceStart = false
     private var rejectedServiceStart = false
+    private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { preferences, key ->
+        if (key == MUSICBRAINZ_ARTWORK_ENABLED) {
+            songManager.setMusicBrainzEnabled(preferences.getBoolean(MUSICBRAINZ_ARTWORK_ENABLED, false))
+        }
+    }
 
     private val playbackListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
-            val station = player.currentMediaItem?.localConfiguration?.tag as? Station
-            songManager.setStation(station.takeIf { player.isPlaying })
+            songManager.setStation(player.preparedStation(), poll = player.playWhenReady)
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
-                publishSongTitle(station?.id, null)
+                player.currentMediaItem?.mediaId?.let { publishSong(it, null) }
+            }
+        }
+
+        override fun onMetadata(metadata: Metadata) {
+            val song = metadata.songInfo()
+            val hasIcyTitle = (0 until metadata.length()).any { (metadata[it] as? IcyInfo)?.title != null }
+            if (song != null || hasIcyTitle) updateStreamSong(song)
+        }
+
+        override fun onTracksChanged(tracks: Tracks) {
+            for (group in tracks.groups) {
+                if (group.type != C.TRACK_TYPE_AUDIO || !group.isSelected) continue
+                for (index in 0 until group.length) {
+                    if (!group.isTrackSelected(index)) continue
+                    val song = group.getTrackFormat(index).metadata?.songInfo() ?: continue
+                    updateStreamSong(song)
+                    return
+                }
             }
         }
     }
@@ -75,7 +101,9 @@ class PlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
-        songManager = SongManager(serviceScope, publish = ::publishSongTitle)
+        songManager = SongManager(serviceScope, publish = ::publishSong)
+        radioPreferences.registerOnSharedPreferenceChangeListener(preferenceListener)
+        songManager.setMusicBrainzEnabled(radioPreferences.getBoolean(MUSICBRAINZ_ARTWORK_ENABLED, false))
         player.addListener(playbackListener)
 
         val stationPlayer = StationPlayer(player, ::skipStation)
@@ -147,6 +175,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        radioPreferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         serviceScope.cancel()
         player.removeListener(playbackListener)
         session.release()
@@ -182,21 +211,38 @@ class PlaybackService : MediaLibraryService() {
             player.setMediaItem(station.mediaItem(playableSource = true))
             if (shouldPrepare) player.prepare()
         } else {
-            val sameMetadataSource = station.infoDataUrl == previous.infoDataUrl &&
+            val sameMetadataSource = station.songDataUrl == previous.songDataUrl &&
                 station.metadataFormat == previous.metadataFormat
-            if (!sameMetadataSource) songManager.setStation(null)
-            val title = item.mediaMetadata.subtitle?.toString().takeIf { sameMetadataSource }
-            player.replaceMediaItem(0, station.mediaItem(playableSource = true, songTitle = title))
+            val song = songManager.currentSong.takeIf { sameMetadataSource }
+            player.replaceMediaItem(0, station.mediaItem(playableSource = true, song = song))
+            songManager.setStation(player.preparedStation(), poll = player.playWhenReady)
         }
     }
 
-    private fun publishSongTitle(stationId: String?, title: String?) {
+    private fun Player.preparedStation(): Station? {
+        if (playbackState != Player.STATE_READY && playbackState != Player.STATE_BUFFERING) return null
+        return currentMediaItem?.localConfiguration?.tag as? Station
+    }
+
+    private fun Metadata.songInfo(): SongInfo? {
+        val metadata = MediaMetadata.Builder().populateFromMetadata(this).build()
+        return parseStreamSong(metadata.title?.toString(), metadata.artist?.toString(), metadata.artworkData)
+    }
+
+    private fun updateStreamSong(song: SongInfo?) {
+        val station = player.preparedStation() ?: return
+        songManager.setStation(station, poll = player.playWhenReady)
+        songManager.setStreamSong(station.id, song)
+    }
+
+    private fun publishSong(stationId: String, song: SongInfo?) {
         val item = player.currentMediaItem ?: return
-        if (item.mediaId != stationId || item.mediaMetadata.subtitle == title) return
-        if (title != null && !player.isPlaying) return
+        if (item.mediaId != stationId) return
+        val station = item.localConfiguration?.tag as? Station ?: return
+        val metadata = station.mediaMetadata(playableSource = true, song = song)
+        if (item.mediaMetadata == metadata) return
 
         // The URI and playback configuration stay identical, so ExoPlayer updates the source in place.
-        val metadata = item.mediaMetadata.buildUpon().setSubtitle(title).setArtist(title).build()
         player.replaceMediaItem(0, item.buildUpon().setMediaMetadata(metadata).build())
     }
 
@@ -221,25 +267,29 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    private fun Station.mediaItem(playableSource: Boolean = false, songTitle: String? = null): MediaItem {
-        val resource = logo.takeIf { it != 0 } ?: R.drawable.radio_224dp_sz48
-        val artwork = customArtworkUrl?.takeIf { playableSource }?.let(Uri::parse)
-            ?: Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/$resource")
-        return MediaItem.Builder()
+    private fun Station.mediaItem(playableSource: Boolean = false, song: SongInfo? = null): MediaItem =
+        MediaItem.Builder()
             .setMediaId(id)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(name)
-                    .setDisplayTitle(name)
-                    .setSubtitle(songTitle)
-                    .setArtist(songTitle)
-                    .setArtworkUri(artwork)
-                    .setIsBrowsable(false)
-                    .setIsPlayable(true)
-                    .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
-                    .build()
-            )
+            .setMediaMetadata(mediaMetadata(playableSource, song))
             .apply { if (playableSource) setUri(url).setTag(this@mediaItem) }
+            .build()
+
+    private fun Station.mediaMetadata(playableSource: Boolean, song: SongInfo?): MediaMetadata {
+        val resource = logo.takeIf { it != 0 } ?: R.drawable.radio_224dp_sz48
+        val artwork = if (song?.artworkData != null) null else {
+            (song?.artworkUrl ?: customArtworkUrl?.takeIf { playableSource })?.let(Uri::parse)
+                ?: Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/$resource")
+        }
+        return MediaMetadata.Builder()
+            .setTitle(song?.title ?: name)
+            .setDisplayTitle(name)
+            .setSubtitle(song?.displayTitle)
+            .setArtist(song?.artist)
+            .setArtworkUri(artwork)
+            .setArtworkData(song?.artworkData, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
             .build()
     }
 

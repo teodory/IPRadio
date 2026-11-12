@@ -2,6 +2,10 @@
 <resources>
     <string name="stations">Станции</string>
     <string name="settings">Настройки</string>
+    <string name="edit_stations">Редактирай станциите</string>
+    <string name="musicbrainz_artwork">Търси обложки с MusicBrainz</string>
+    <string name="musicbrainz_artwork_description">Търси, когато радиото не подава обложка.</string>
+    <string name="close_settings">Готово</string>
     <string name="add_radio">Добави станция</string>
     <string name="edit_radio">Редактирай %1$s</string>
     <string name="station_on_air">В ефир</string>

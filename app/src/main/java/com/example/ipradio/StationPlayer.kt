@@ -25,6 +25,11 @@ internal class StationPlayer(private val delegate: Player, private val skip: (In
 
     override fun isCommandAvailable(command: Int): Boolean = availableCommands.contains(command)
 
+    // PlaybackService publishes the active song on the item. The player's merged metadata can
+    // still include artwork bytes from an earlier stream tag.
+    override fun getMediaMetadata(): MediaMetadata =
+        delegate.currentMediaItem?.mediaMetadata ?: delegate.mediaMetadata
+
     override fun addListener(listener: Player.Listener) {
         if (listener in listeners) return
         val forwardingListener = StationListener(listener)
@@ -64,7 +69,7 @@ internal class StationPlayer(private val delegate: Player, private val skip: (In
         override fun onTracksChanged(tracks: Tracks) = listener.onTracksChanged(tracks)
 
         override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) =
-            listener.onMediaMetadataChanged(mediaMetadata)
+            listener.onMediaMetadataChanged(getMediaMetadata())
 
         override fun onPlaylistMetadataChanged(mediaMetadata: MediaMetadata) =
             listener.onPlaylistMetadataChanged(mediaMetadata)

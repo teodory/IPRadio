@@ -1,6 +1,7 @@
 package com.example.ipradio
 
 import android.content.ComponentName
+import android.content.ContentResolver
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -40,6 +41,7 @@ class MainActivity : ComponentActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
     private var playback by mutableStateOf(PlaybackUiState())
+    private var musicBrainzEnabled by mutableStateOf(false)
     private val playbackListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             showPlayback(player)
@@ -50,6 +52,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val catalog = StationCatalog.getInstance(this)
         val editor = ViewModelProvider(this)[StationEditorState::class.java]
+        musicBrainzEnabled = radioPreferences.getBoolean(MUSICBRAINZ_ARTWORK_ENABLED, false)
         connectPlayer()
 
         setContent {
@@ -60,6 +63,11 @@ class MainActivity : ComponentActivity() {
                         stations = stations,
                         playback = playback,
                         editor = editor,
+                        musicBrainzEnabled = musicBrainzEnabled,
+                        onMusicBrainzChanged = { enabled ->
+                            musicBrainzEnabled = enabled
+                            radioPreferences.edit().putBoolean(MUSICBRAINZ_ARTWORK_ENABLED, enabled).apply()
+                        },
                         onPlayStation = ::playStation,
                         onPrevious = { controller?.seekToPrevious() },
                         onNext = { controller?.seekToNext() },
@@ -115,12 +123,16 @@ class MainActivity : ComponentActivity() {
     private fun showPlayback(player: Player) {
         val active = player.playWhenReady &&
             (player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_READY)
+        val metadata = player.mediaMetadata
+        val song = metadata.subtitle?.toString().orEmpty()
         playback = PlaybackUiState(
             connected = true,
             stationId = player.currentMediaItem?.mediaId,
             active = active,
             playing = player.isPlaying,
-            song = player.mediaMetadata.subtitle?.toString().orEmpty(),
+            song = song,
+            songArtwork = if (song.isBlank()) null else metadata.artworkData
+                ?: metadata.artworkUri?.takeUnless { it.scheme == ContentResolver.SCHEME_ANDROID_RESOURCE },
             status = when {
                 player.playerError != null -> R.string.player_stream_error
                 active && player.playbackState == Player.STATE_BUFFERING -> R.string.player_connecting_station
@@ -150,6 +162,7 @@ internal data class PlaybackUiState(
     val active: Boolean = false,
     val playing: Boolean = false,
     val song: String = "",
+    val songArtwork: Any? = null,
     @StringRes val status: Int? = null
 )
 

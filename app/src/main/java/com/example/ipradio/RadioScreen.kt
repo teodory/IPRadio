@@ -21,17 +21,21 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -61,6 +66,8 @@ internal fun RadioScreen(
     stations: List<Station>,
     playback: PlaybackUiState,
     editor: StationEditorState,
+    musicBrainzEnabled: Boolean,
+    onMusicBrainzChanged: (Boolean) -> Unit,
     onPlayStation: (Station) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -68,6 +75,7 @@ internal fun RadioScreen(
     saveStation: suspend (String?, String, String, String, String) -> Result<Station>
 ) {
     var editMode by rememberSaveable { mutableStateOf(false) }
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var adding by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
@@ -117,6 +125,14 @@ internal fun RadioScreen(
                 onClick = { editMode = !editMode },
                 modifier = Modifier.clip(RoundedCornerShape(14.dp))
                     .background(if (editMode) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+                    .semantics { selected = editMode }
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_stations))
+            }
+            IconButton(
+                onClick = { settingsOpen = true },
+                modifier = Modifier.clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surface)
             ) {
                 Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
             }
@@ -146,6 +162,36 @@ internal fun RadioScreen(
             onPrevious = onPrevious,
             onNext = onNext,
             onToggle = { if (playback.active) onStop() else station?.let(onPlayStation) }
+        )
+    }
+
+    if (settingsOpen) {
+        AlertDialog(
+            onDismissRequest = { settingsOpen = false },
+            title = { Text(stringResource(R.string.settings)) },
+            text = {
+                Row(
+                    modifier = Modifier.fillMaxWidth().toggleable(
+                        value = musicBrainzEnabled,
+                        role = Role.Switch,
+                        onValueChange = onMusicBrainzChanged
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.musicbrainz_artwork))
+                        Text(
+                            stringResource(R.string.musicbrainz_artwork_description),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Switch(checked = musicBrainzEnabled, onCheckedChange = null)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { settingsOpen = false }) { Text(stringResource(R.string.close_settings)) }
+            }
         )
     }
 
@@ -234,7 +280,7 @@ private fun MiniPlayer(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            StationArtwork(station, 38.dp)
+            StationArtwork(station, 38.dp, playback.songArtwork.takeIf { playback.playing })
             Column(
                 modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
                 verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -304,7 +350,7 @@ private fun MiniPlayer(
 }
 
 @Composable
-private fun StationArtwork(station: Station?, size: Dp) {
+private fun StationArtwork(station: Station?, size: Dp, songArtwork: Any? = null) {
     val logo = station?.logo?.takeIf { it != 0 }
     val image = station?.customArtworkUrl
     val fallback = painterResource(logo ?: R.drawable.radio_224dp_sz48)
@@ -321,6 +367,14 @@ private fun StationArtwork(station: Station?, size: Dp) {
                 contentDescription = null,
                 placeholder = fallback,
                 error = fallback,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        if (songArtwork != null && songArtwork.toString() != image) {
+            AsyncImage(
+                model = songArtwork,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
         }

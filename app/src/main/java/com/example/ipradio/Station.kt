@@ -13,11 +13,13 @@ data class Station(
 enum class MetadataFormat { ZROCK, METACAST, MAGIC, FLUMOTION, PLAIN_TEXT }
 
 internal const val RADIO_ANTENA_STREAM_URL = "https://live.radioantena.bg/RadioAntena"
+private const val ZROCK_STREAM_URL = "https://web.static.btv.bg/radio/zrock-radio-proxy/"
+private const val ZROCK_SONG_URL = "https://zrock.bg/lbin/zrock/refresh_song_ajax.php?view=desktop"
 
 internal val defaultStations = listOf(
     Station(
         "zrock", "ZRock",
-        "https://web.static.btv.bg/radio/zrock-radio-proxy/",
+        ZROCK_STREAM_URL,
         "https://zrock.bg/static/bg/microsites/zrock/img/logo.png",
         logo = R.drawable.station_zrock,
         metadataFormat = MetadataFormat.ZROCK
@@ -58,7 +60,7 @@ internal val defaultStations = listOf(
     ),
     Station(
         "rockfm", "RockFM",
-        "https://rockfm-cope.flumotion.com/chunks.m3u8",
+        "https://rockfm-cope.flumotion.com/playlist.m3u8",
         "https://static.mytuner.mobi/media/tvos_radios/7WH7nKXkwa.png",
         logo = R.drawable.station_rockfm,
         infoDataUrl = "https://bo-cope-webtv.flumotion.com/api/active?format=json&podId=78",
@@ -98,6 +100,11 @@ internal val defaultStationsById = defaultStations.associateBy(Station::id)
 
 internal val Station.customArtworkUrl: String?
     get() = image.takeIf { it.isNotEmpty() && it != defaultStationsById[id]?.image }
+
+internal val Station.songDataUrl: String
+    get() = infoDataUrl.ifBlank {
+        ZROCK_SONG_URL.takeIf { id == "zrock" && url == ZROCK_STREAM_URL }.orEmpty()
+    }
 
 internal fun adjacentStation(stations: List<Station>, currentId: String?, offset: Int): Station? {
     val currentIndex = stations.indexOfFirst { it.id == currentId }

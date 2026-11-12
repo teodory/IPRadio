@@ -117,6 +117,22 @@ class StationCatalogTest {
     }
 
     @Test
+    fun savedDefaultArtworkIsUpdatedWithoutReplacingCustomArtwork() {
+        val file = storeFile()
+        file.writeText("""
+            [
+              {"id":"fmplus","name":"FM+","url":"https://example.org/fmplus","image":"http://fmplus.net/playernew/i/logo_fmplus.png","infoDataUrl":""},
+              {"id":"tangra-mega-rock","name":"Tangra Mega Rock","url":"https://example.org/tangra","image":"https://example.org/my-logo.png","infoDataUrl":""}
+            ]
+        """.trimIndent())
+
+        val stations = StationCatalog(file).stations.value.associateBy(Station::id)
+
+        assertEquals("https://radiofmplus.bg/i/logo.png", stations.getValue("fmplus").image)
+        assertEquals("https://example.org/my-logo.png", stations.getValue("tangra-mega-rock").image)
+    }
+
+    @Test
     fun rejectsInvalidFieldsAndUnknownIdWithoutChangingTheCatalog() = runBlocking {
         val file = storeFile()
         val catalog = StationCatalog(file)

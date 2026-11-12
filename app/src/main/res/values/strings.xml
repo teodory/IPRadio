@@ -1,3 +1,22 @@
 <resources>
     <string name="app_name">IPRadio</string>
+    <string name="stations">Stations</string>
+    <string name="settings">Settings</string>
+    <string name="add_radio">Add Radio</string>
+    <string name="edit_radio">Edit %1$s</string>
+    <string name="station_on_air">On air</string>
+    <string name="player_choose_station">Choose a station</string>
+    <string name="player_ready">Ready to play</string>
+    <string name="player_connecting">Connecting to player…</string>
+    <string name="player_unavailable">Player unavailable</string>
+    <string name="player_connecting_station">Connecting to station…</string>
+    <string name="player_waiting">Waiting for audio…</string>
+    <string name="player_stream_error">Couldn’t play this stream</string>
+    <string name="player_paused">Paused</string>
+    <string name="player_stopped">Stopped</string>
+    <string name="player_live">Live</string>
+    <string name="player_play">Play radio</string>
+    <string name="player_stop">Stop radio</string>
+    <string name="player_previous">Previous station</string>
+    <string name="player_next">Next station</string>
 </resources>

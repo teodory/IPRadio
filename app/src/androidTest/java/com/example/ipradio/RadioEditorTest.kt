@@ -46,6 +46,26 @@ class RadioEditorTest {
     }
 
     @Test
+    fun fullScreenSettingsOpensStationEditing() {
+        val settings = compose.onNodeWithContentDescription("Settings")
+        val stations = compose.onNodeWithText("Stations")
+        val add = compose.onNodeWithContentDescription("Add Radio")
+        settings.performClick()
+        stations.assertDoesNotExist()
+        compose.onNodeWithText("Settings").assertIsDisplayed()
+
+        compose.onNodeWithText("Edit stations").performClick()
+        stations.assertIsDisplayed()
+        add.assertIsDisplayed()
+        compose.onNodeWithContentDescription("Edit ZRock").assertIsDisplayed()
+
+        compose.onNodeWithContentDescription("Done editing").performClick()
+        add.assertDoesNotExist()
+        compose.onNodeWithContentDescription("Edit stations").assertDoesNotExist()
+        settings.assertIsDisplayed()
+    }
+
+    @Test
     fun musicBrainzSettingSurvivesActivityRecreation() {
         compose.onNodeWithContentDescription("Settings").performClick()
         val toggle = compose.onNodeWithText("Find cover art with MusicBrainz")
@@ -67,28 +87,28 @@ class RadioEditorTest {
     fun bigPlayerAppearsBelowTheStationsAndSurvivesActivityRecreation() {
         val settings = compose.onNodeWithContentDescription("Settings")
         val toggle = compose.onNodeWithText("Big player")
-        val done = compose.onNodeWithText("Done")
+        val back = compose.onNodeWithContentDescription("Back to stations")
         settings.performClick()
         val initiallyOn = toggle.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ToggleableState] ==
             androidx.compose.ui.state.ToggleableState.On
         if (!initiallyOn) toggle.performClick()
-        done.performClick()
+        back.performClick()
 
         try {
             compose.activityRule.scenario.recreate()
             val next = compose.onNodeWithContentDescription("Next station").getUnclippedBoundsInRoot()
-            compose.onNodeWithContentDescription("Edit stations").performClick()
+            enterEditMode()
             val firstRowEditor = compose.onNodeWithContentDescription("Edit ZRock")
                 .getUnclippedBoundsInRoot()
             assertTrue(firstRowEditor.bottom < next.top)
             settings.performClick()
             toggle.assertIsOn()
-            done.performClick()
+            back.performClick()
         } finally {
             if (!initiallyOn) {
                 settings.performClick()
                 toggle.performClick()
-                done.performClick()
+                back.performClick()
             }
         }
     }
@@ -129,7 +149,12 @@ class RadioEditorTest {
     }
 
     private fun openEditor() {
-        compose.onNodeWithContentDescription("Edit stations").performClick()
+        enterEditMode()
         compose.onNodeWithContentDescription("Add Radio").performClick()
+    }
+
+    private fun enterEditMode() {
+        compose.onNodeWithContentDescription("Settings").performClick()
+        compose.onNodeWithText("Edit stations").performClick()
     }
 }

@@ -2,12 +2,13 @@
     <string name="app_name">IPRadio</string>
     <string name="stations">Stations</string>
     <string name="settings">Settings</string>
+    <string name="back_to_stations">Back to stations</string>
     <string name="edit_stations">Edit stations</string>
+    <string name="done_editing_stations">Done editing</string>
     <string name="dark_mode">Dark mode</string>
     <string name="big_player">Big player</string>
     <string name="musicbrainz_artwork">Find cover art with MusicBrainz</string>
     <string name="musicbrainz_artwork_description">Search when the radio doesn’t provide cover art.</string>
-    <string name="close_settings">Done</string>
     <string name="add_radio">Add Radio</string>
     <string name="edit_radio">Edit %1$s</string>
     <string name="move_station_up">Move %1$s up</string>

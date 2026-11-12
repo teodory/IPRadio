@@ -2,11 +2,13 @@
 <resources>
     <string name="stations">Станции</string>
     <string name="settings">Настройки</string>
+    <string name="back_to_stations">Назад към станциите</string>
     <string name="edit_stations">Редактирай станциите</string>
+    <string name="done_editing_stations">Приключи редактирането</string>
+    <string name="dark_mode">Тъмен режим</string>
     <string name="big_player">Голям плейър</string>
     <string name="musicbrainz_artwork">Търси обложки с MusicBrainz</string>
     <string name="musicbrainz_artwork_description">Търси, когато радиото не подава обложка.</string>
-    <string name="close_settings">Готово</string>
     <string name="add_radio">Добави станция</string>
     <string name="edit_radio">Редактирай %1$s</string>
     <string name="move_station_up">Премести %1$s нагоре</string>

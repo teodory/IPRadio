@@ -1,5 +1,6 @@
 package com.example.ipradio
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -29,6 +30,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -83,6 +86,8 @@ internal fun RadioScreen(
     onMusicBrainzChanged: (Boolean) -> Unit,
     bigPlayerEnabled: Boolean,
     onBigPlayerChanged: (Boolean) -> Unit,
+    darkModeEnabled: Boolean,
+    onDarkModeChanged: (Boolean) -> Unit,
     onPlayStation: (Station) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -99,6 +104,9 @@ internal fun RadioScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val selectedIndex = stations.indexOfFirst { it.id == playback.stationId }
+    BackHandler(enabled = settingsOpen || editMode) {
+        if (settingsOpen) settingsOpen = false else editMode = false
+    }
     LaunchedEffect(selectedIndex, editMode, bigPlayerEnabled) {
         if (editMode || selectedIndex < 0) return@LaunchedEffect
         val layout = listState.layoutInfo
@@ -132,45 +140,75 @@ internal fun RadioScreen(
         }
     }
 
+    if (settingsOpen) {
+        Column(Modifier.fillMaxSize().systemBarsPadding()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 10.dp, end = 16.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                IconButton(onClick = { settingsOpen = false }) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back_to_stations))
+                }
+                Text(
+                    text = stringResource(R.string.settings),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button) {
+                        editMode = true
+                        settingsOpen = false
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(stringResource(R.string.edit_stations), modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                }
+                SettingsSwitch(R.string.dark_mode, darkModeEnabled, onDarkModeChanged)
+                SettingsSwitch(R.string.big_player, bigPlayerEnabled, onBigPlayerChanged)
+                SettingsSwitch(
+                    R.string.musicbrainz_artwork,
+                    musicBrainzEnabled,
+                    onMusicBrainzChanged,
+                    description = R.string.musicbrainz_artwork_description
+                )
+            }
+        }
+        return
+    }
+
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, top = 10.dp, end = 16.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Icon(
-                        painterResource(R.drawable.radio_48px),
-                        contentDescription = null,
-                        modifier = Modifier.size(13.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        "IPRadio",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Text(
-                    stringResource(R.string.stations),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            Text(
+                text = stringResource(R.string.stations),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
             if (editMode) {
                 IconButton(onClick = { adding = true }) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_radio))
                 }
+                IconButton(
+                    onClick = { editMode = false },
+                    modifier = Modifier.clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.done_editing_stations))
+                }
+                Spacer(Modifier.width(8.dp))
             }
-            IconButton(
-                onClick = { editMode = !editMode },
-                modifier = Modifier.clip(RoundedCornerShape(14.dp))
-                    .background(if (editMode) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
-                    .semantics { selected = editMode }
-            ) {
-                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit_stations))
-            }
-            Spacer(Modifier.width(8.dp))
             IconButton(
                 onClick = { settingsOpen = true },
                 modifier = Modifier.clip(RoundedCornerShape(14.dp))
@@ -207,30 +245,6 @@ internal fun RadioScreen(
             onPrevious = onPrevious,
             onNext = onNext,
             onToggle = { if (playback.active) onStop() else station?.let(onPlayStation) }
-        )
-    }
-
-    if (settingsOpen) {
-        AlertDialog(
-            onDismissRequest = { settingsOpen = false },
-            title = { Text(stringResource(R.string.settings)) },
-            text = {
-                Column(
-                    Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    SettingsSwitch(R.string.big_player, bigPlayerEnabled, onBigPlayerChanged)
-                    SettingsSwitch(
-                        R.string.musicbrainz_artwork,
-                        musicBrainzEnabled,
-                        onMusicBrainzChanged,
-                        description = R.string.musicbrainz_artwork_description
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { settingsOpen = false }) { Text(stringResource(R.string.close_settings)) }
-            }
         )
     }
 

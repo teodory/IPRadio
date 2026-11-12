@@ -83,6 +83,8 @@ internal fun RadioScreen(
     onMusicBrainzChanged: (Boolean) -> Unit,
     bigPlayerEnabled: Boolean,
     onBigPlayerChanged: (Boolean) -> Unit,
+    darkModeEnabled: Boolean,
+    onDarkModeChanged: (Boolean) -> Unit,
     onPlayStation: (Station) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -137,26 +139,12 @@ internal fun RadioScreen(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, top = 10.dp, end = 16.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Icon(
-                        painterResource(R.drawable.radio_48px),
-                        contentDescription = null,
-                        modifier = Modifier.size(13.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        "IPRadio",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Text(
-                    stringResource(R.string.stations),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            Text(
+                text = stringResource(R.string.stations),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
             if (editMode) {
                 IconButton(onClick = { adding = true }) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_radio))
@@ -219,6 +207,7 @@ internal fun RadioScreen(
                     Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    SettingsSwitch(R.string.dark_mode, darkModeEnabled, onDarkModeChanged)
                     SettingsSwitch(R.string.big_player, bigPlayerEnabled, onBigPlayerChanged)
                     SettingsSwitch(
                         R.string.musicbrainz_artwork,

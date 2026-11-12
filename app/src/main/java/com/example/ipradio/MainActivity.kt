@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.StringRes
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
@@ -43,6 +44,7 @@ class MainActivity : ComponentActivity() {
     private var playback by mutableStateOf(PlaybackUiState())
     private var musicBrainzEnabled by mutableStateOf(false)
     private var bigPlayerEnabled by mutableStateOf(false)
+    private var darkModeOverride by mutableStateOf<Boolean?>(null)
     private val playbackListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             showPlayback(player)
@@ -55,11 +57,17 @@ class MainActivity : ComponentActivity() {
         val editor = ViewModelProvider(this)[StationEditorState::class.java]
         musicBrainzEnabled = radioPreferences.getBoolean(MUSICBRAINZ_ARTWORK_ENABLED, false)
         bigPlayerEnabled = radioPreferences.getBoolean(BIG_PLAYER_ENABLED, false)
+        darkModeOverride = if (radioPreferences.contains(DARK_MODE_ENABLED)) {
+            radioPreferences.getBoolean(DARK_MODE_ENABLED, false)
+        } else {
+            null
+        }
         connectPlayer()
 
         setContent {
             val stations by catalog.stations.collectAsState()
-            IPRadioTheme {
+            val darkModeEnabled = darkModeOverride ?: isSystemInDarkTheme()
+            IPRadioTheme(darkTheme = darkModeEnabled) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     RadioScreen(
                         stations = stations,
@@ -74,6 +82,11 @@ class MainActivity : ComponentActivity() {
                         onBigPlayerChanged = { enabled ->
                             bigPlayerEnabled = enabled
                             radioPreferences.edit().putBoolean(BIG_PLAYER_ENABLED, enabled).apply()
+                        },
+                        darkModeEnabled = darkModeEnabled,
+                        onDarkModeChanged = { enabled ->
+                            darkModeOverride = enabled
+                            radioPreferences.edit().putBoolean(DARK_MODE_ENABLED, enabled).apply()
                         },
                         onPlayStation = ::playStation,
                         onPrevious = { controller?.seekToPrevious() },

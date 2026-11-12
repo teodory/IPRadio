@@ -3,6 +3,7 @@
     <string name="stations">Станции</string>
     <string name="settings">Настройки</string>
     <string name="edit_stations">Редактирай станциите</string>
+    <string name="dark_mode">Тъмен режим</string>
     <string name="big_player">Голям плейър</string>
     <string name="musicbrainz_artwork">Търси обложки с MusicBrainz</string>
     <string name="musicbrainz_artwork_description">Търси, когато радиото не подава обложка.</string>

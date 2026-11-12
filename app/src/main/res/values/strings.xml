@@ -3,6 +3,7 @@
     <string name="stations">Stations</string>
     <string name="settings">Settings</string>
     <string name="edit_stations">Edit stations</string>
+    <string name="dark_mode">Dark mode</string>
     <string name="big_player">Big player</string>
     <string name="musicbrainz_artwork">Find cover art with MusicBrainz</string>
     <string name="musicbrainz_artwork_description">Search when the radio doesn’t provide cover art.</string>

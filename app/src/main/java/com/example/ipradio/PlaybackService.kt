@@ -59,7 +59,13 @@ class PlaybackService : MediaLibraryService() {
 
     private val playbackListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
-            songManager.setStation(player.preparedStation(), poll = player.playWhenReady)
+            val station = player.preparedStation()
+            if (player.playWhenReady && station != null &&
+                radioPreferences.getString(LAST_PLAYED_STATION_ID, null) != station.id
+            ) {
+                radioPreferences.edit().putString(LAST_PLAYED_STATION_ID, station.id).apply()
+            }
+            songManager.setStation(station, poll = player.playWhenReady)
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
                 player.currentMediaItem?.mediaId?.let { publishSong(it, null) }
             }
@@ -358,7 +364,9 @@ class PlaybackService : MediaLibraryService() {
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-            val station = catalog.stations.value.firstOrNull()
+            val stations = catalog.stations.value
+            val lastStationId = radioPreferences.getString(LAST_PLAYED_STATION_ID, null)
+            val station = stations.firstOrNull { it.id == lastStationId } ?: stations.firstOrNull()
                 ?: return Futures.immediateFailedFuture(IllegalStateException("No stations available"))
             return Futures.immediateFuture(playbackSelection(station))
         }
@@ -448,6 +456,7 @@ class PlaybackService : MediaLibraryService() {
 
     private companion object {
         const val ROOT_ID = "com.example.ipradio.ROOT"
+        const val LAST_PLAYED_STATION_ID = "last_played_station_id"
         const val EXPIRED_ACTION_CHANNEL = "expired_playback_action"
         const val EXPIRED_ACTION_NOTIFICATION = 1002
 

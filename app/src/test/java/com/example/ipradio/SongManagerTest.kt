@@ -1,10 +1,13 @@
 package com.example.ipradio
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,6 +17,71 @@ import java.util.concurrent.TimeUnit
 
 class SongManagerTest {
     @Test(timeout = 5000)
+    fun enablingCoverLookupUpdatesCurrentSongAndDisablingRemovesTheCover() = runBlocking {
+        val published = Channel<SongInfo?>(Channel.UNLIMITED)
+        val manager = SongManager(this, findArtwork = { "https://example.org/catalog.jpg" }) { _, song ->
+            published.trySend(song)
+        }
+        manager.setStation(station("a").copy(infoDataUrl = ""))
+        val song = SongInfo("The Song", "The Artist")
+        manager.setStreamSong("a", song)
+        assertEquals(song, published.receive())
+        assertTrue(published.tryReceive().isFailure)
+
+        manager.setMusicBrainzEnabled(true)
+        assertEquals(song.copy(artworkUrl = "https://example.org/catalog.jpg"), published.receive())
+        manager.setMusicBrainzEnabled(false)
+        assertEquals(song, published.receive())
+        assertNull(manager.currentSong?.artworkUrl)
+        manager.setStation(null)
+    }
+
+    @Test(timeout = 5000)
+    fun stationArtworkSkipsMusicBrainzLookup() = runBlocking {
+        val published = Channel<SongInfo?>(Channel.UNLIMITED)
+        val manager = SongManager(this, findArtwork = { error("Station already supplied artwork") }) { _, song ->
+            published.trySend(song)
+        }
+        manager.setMusicBrainzEnabled(true)
+        manager.setStation(station("a").copy(infoDataUrl = ""))
+        val song = SongInfo("The Song", "The Artist", "https://example.org/station.jpg")
+        manager.setStreamSong("a", song)
+        assertEquals(song, published.receive())
+        manager.setStation(null)
+    }
+
+    @Test(timeout = 5000)
+    fun delayedCoverCannotBePublishedAfterChangingStations() = runBlocking {
+        val published = mutableListOf<Pair<String, SongInfo?>>()
+        val started = CompletableDeferred<Unit>()
+        val release = CountDownLatch(1)
+        val manager = SongManager(this, findArtwork = {
+            withContext(Dispatchers.IO) {
+                started.complete(Unit)
+                check(release.await(3, TimeUnit.SECONDS))
+                "https://example.org/old.jpg"
+            }
+        }) { id, song -> published.add(id to song) }
+        val first = SongInfo("First", "Artist")
+        val next = SongInfo("Next", "Artist", "https://example.org/next.jpg")
+        manager.setMusicBrainzEnabled(true)
+        manager.setStation(station("a").copy(infoDataUrl = ""))
+        manager.setStreamSong("a", first)
+        started.await()
+        val oldLookup = coroutineContext[Job]!!.children.single()
+        try {
+            manager.setStation(station("b").copy(infoDataUrl = ""))
+            manager.setStreamSong("b", next)
+            assertTrue(oldLookup.isCancelled)
+        } finally {
+            release.countDown()
+        }
+        oldLookup.join()
+        assertEquals(listOf("a" to first, "b" to next), published)
+        manager.setStation(null)
+    }
+
+    @Test(timeout = 5000)
     fun dropsBlockedFetchWhenStationChanges() = verifyBlockedFetchIsDropped(station("b"))
 
     @Test(timeout = 5000)
@@ -22,6 +90,45 @@ class SongManagerTest {
 
     @Test(timeout = 5000)
     fun dropsBlockedFetchWhenPlaybackStops() = verifyBlockedFetchIsDropped(null)
+
+    @Test(timeout = 5000)
+    fun preservesStreamSongWhenEditingOnlyTheStationMetadataUrl() = runBlocking {
+        val manager = SongManager(this) { _, _ -> }
+        val station = station("a")
+        val song = SongInfo("The Song", "The Artist")
+        manager.setStation(station.copy(infoDataUrl = ""), poll = false)
+        manager.setStreamSong("a", song)
+        manager.setStation(station, poll = false)
+
+        assertEquals(song, manager.currentSong)
+    }
+
+    @Test(timeout = 5000)
+    fun onlyUsesNewStreamSongsWhenTheStationEndpointStopsReporting() = runBlocking {
+        val paused = Channel<Unit>()
+        val advance = Channel<Unit>()
+        val published = mutableListOf<SongInfo?>()
+        val responses = listOf("Artist - First", null).iterator()
+        val manager = SongManager(this, fetch = { responses.next() }, waitForNextPoll = {
+            paused.send(Unit)
+            advance.receive()
+        }) { _, song -> published.add(song) }
+        val older = SongInfo("Older", "Artist")
+        val first = SongInfo("First", "Artist")
+        val next = SongInfo("Next", "Artist")
+
+        manager.setStation(station("a"))
+        manager.setStreamSong("a", older)
+        paused.receive()
+        advance.send(Unit)
+        paused.receive()
+        assertEquals(listOf(older, first), published)
+
+        manager.setStreamSong("a", next)
+        manager.setStation(null)
+
+        assertEquals(listOf(older, first, next), published)
+    }
 
     @Test(timeout = 5000)
     fun retainsLastUsableTitleAndKeepsPollingAfterFailure() = runBlocking {
@@ -38,7 +145,7 @@ class SongManagerTest {
         val manager = SongManager(this, fetch = { responses.next()() }, waitForNextPoll = {
             pauseReached.send(Unit)
             nextPoll.receive()
-        }) { id, title -> published.add(id to title) }
+        }) { id, song -> published.add(id to song?.displayTitle) }
 
         manager.setStation(station("a"))
         pauseReached.receive()
@@ -70,7 +177,8 @@ class SongManagerTest {
             } else {
                 "New Artist - New Song"
             }
-        }) { id, title ->
+        }) { id, song ->
+            val title = song?.displayTitle
             published.add(id to title)
             if (title == "New Artist - New Song") nextPublished.trySend(Unit)
         }

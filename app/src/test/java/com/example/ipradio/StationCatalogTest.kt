@@ -117,6 +117,21 @@ class StationCatalogTest {
     }
 
     @Test
+    fun updatesOnlyTheRetiredRockFmStream() {
+        val file = storeFile()
+        val oldStream = "https://rockfm-cope.flumotion.com/chunks.m3u8"
+        val savedStation = """[{"id":"rockfm","name":"My RockFM","url":"$oldStream","image":"","infoDataUrl":""}]"""
+        file.writeText(savedStation)
+        val updated = StationCatalog(file).stations.value.first()
+        assertEquals("My RockFM", updated.name)
+        assertEquals("https://rockfm-cope.flumotion.com/playlist.m3u8", updated.url)
+
+        val customStream = "https://example.org/my-rock.m3u8"
+        file.writeText(savedStation.replace(oldStream, customStream))
+        assertEquals(customStream, StationCatalog(file).stations.value.first().url)
+    }
+
+    @Test
     fun savedDefaultArtworkIsUpdatedWithoutReplacingCustomArtwork() {
         val file = storeFile()
         file.writeText("""

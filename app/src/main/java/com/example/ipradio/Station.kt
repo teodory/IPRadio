@@ -40,7 +40,7 @@ internal val defaultStations = listOf(
     ),
     Station(
         "fmplus", "FM+",
-        "http://193.108.24.21:8000/fmplus?file=.mp3",
+        "https://streamer2.atlantis.bg:8443/fmplusnew",
         "https://radiofmplus.bg/i/logo.png",
         logo = R.drawable.station_fmplus
     ),
@@ -93,6 +93,12 @@ internal val defaultStations = listOf(
         RADIO_ANTENA_STREAM_URL,
         "https://radioantena.bg/radio-antena-logo.jpg",
         logo = R.drawable.station_antena
+    ),
+    Station(
+        "btv-radio", "bTV Radio",
+        "https://cdn.bweb.bg/radio/btv-radio.mp3",
+        "https://btvnovinite.bg/static/bg/microsites/btvnovinite/img/logos/btv_radio.png",
+        logo = R.drawable.station_btv_radio
     )
 )
 

@@ -22,7 +22,7 @@ class StationCatalogTest {
         val stations = StationCatalog(storeFile()).stations.value
         assertEquals(
             listOf("ZRock", "1Rock", "Darik", "FM+", "Magic FM", "Tangra Mega Rock",
-                "RockFM", "Cadena100", "SoftRockRadio.net", "Melody", "Радио Антена"),
+                "RockFM", "Cadena100", "SoftRockRadio.net", "Melody", "Радио Антена", "bTV Radio"),
             stations.map { it.name }
         )
         assertEquals(stations.size, stations.map { it.id }.toSet().size)
@@ -144,6 +144,7 @@ class StationCatalogTest {
         assertTrue(loaded.any { it.name == "Custom" })
         assertTrue(loaded.any { it.name == "Melody" })
         assertEquals("https://live.radioantena.bg/RadioAntena", loaded.firstOrNull { it.id == "radio-antena" }?.url)
+        assertEquals("https://cdn.bweb.bg/radio/btv-radio.mp3", loaded.firstOrNull { it.id == "btv-radio" }?.url)
         assertEquals(defaultStations.size + 1, loaded.size)
         assertTrue(catalog.save(null, "Another", "https://example.org/live", "", "").isSuccess)
     }
@@ -159,6 +160,21 @@ class StationCatalogTest {
         assertEquals("https://rockfm-cope.flumotion.com/playlist.m3u8", updated.url)
 
         val customStream = "https://example.org/my-rock.m3u8"
+        file.writeText(savedStation.replace(oldStream, customStream))
+        assertEquals(customStream, StationCatalog(file).stations.value.first().url)
+    }
+
+    @Test
+    fun updatesOnlyThePreviousDefaultFmPlusStream() {
+        val file = storeFile()
+        val oldStream = "http://193.108.24.21:8000/fmplus?file=.mp3"
+        val savedStation = """[{"id":"fmplus","name":"My FM+","url":"$oldStream","image":"","infoDataUrl":""}]"""
+        file.writeText(savedStation)
+        val updated = StationCatalog(file).stations.value.first()
+        assertEquals("My FM+", updated.name)
+        assertEquals("https://streamer2.atlantis.bg:8443/fmplusnew", updated.url)
+
+        val customStream = "https://example.org/my-fmplus.mp3"
         file.writeText(savedStation.replace(oldStream, customStream))
         assertEquals(customStream, StationCatalog(file).stations.value.first().url)
     }

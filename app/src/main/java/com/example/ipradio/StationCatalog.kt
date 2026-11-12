@@ -108,7 +108,7 @@ class StationCatalog internal constructor(private val file: File) {
             require(id.isNotBlank())
             val builtIn = defaultStationsById[id]
             val savedUrl = fields.string("url")
-            val url = if (builtIn?.id == "rockfm" && savedUrl == previousRockFmStream) builtIn.url else savedUrl
+            val url = if (builtIn != null && savedUrl == previousDefaultStreams[id]) builtIn.url else savedUrl
             validatedStation(id, fields.string("name"), url, fields.string("image"), fields.string("infoDataUrl"), builtIn)
         }
         val ids = stations.map(Station::id).toSet()
@@ -161,7 +161,10 @@ private fun JsonObject.string(key: String): String {
 
 private val webSchemes = setOf("http", "https")
 private val streamSchemes = webSchemes + setOf("rtsp", "udp")
-private const val previousRockFmStream = "https://rockfm-cope.flumotion.com/chunks.m3u8"
+private val previousDefaultStreams = mapOf(
+    "rockfm" to "https://rockfm-cope.flumotion.com/chunks.m3u8",
+    "fmplus" to "http://193.108.24.21:8000/fmplus?file=.mp3"
+)
 private val previousDefaultArtwork = mapOf(
     "fmplus" to "http://fmplus.net/playernew/i/logo_fmplus.png",
     "tangra-mega-rock" to "http://www.radiotangra.com/img/logo_tangra.png"

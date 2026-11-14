@@ -7,8 +7,8 @@
     <string name="done_editing_stations">Done editing</string>
     <string name="dark_mode">Dark mode</string>
     <string name="big_player">Big player</string>
-    <string name="musicbrainz_artwork">Find cover art with MusicBrainz</string>
-    <string name="musicbrainz_artwork_description">Search when the radio doesn’t provide cover art.</string>
+    <string name="musicbrainz_artwork">Use MusicBrainz for songs</string>
+    <string name="musicbrainz_artwork_description">Use matching artist and song names from MusicBrainz and look for missing cover art.</string>
     <string name="add_radio">Add Radio</string>
     <string name="edit_radio">Edit %1$s</string>
     <string name="move_station_up">Move %1$s up</string>

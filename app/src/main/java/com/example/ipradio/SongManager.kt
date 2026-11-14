@@ -18,7 +18,7 @@ internal class SongManager(
     private val scope: CoroutineScope,
     private val fetch: suspend (String) -> String? = { fetchMetadata(it) },
     private val waitForNextPoll: suspend (Long) -> Unit = { delay(it) },
-    private val findArtwork: suspend (SongInfo) -> String? = MusicBrainzArtwork()::find,
+    private val enrichSong: suspend (SongInfo) -> SongInfo = MusicBrainzLookup()::enrich,
     private val publish: (stationId: String, song: SongInfo?) -> Unit,
 ) {
     private data class Source(
@@ -31,7 +31,7 @@ internal class SongManager(
     private var source: Source? = null
     private var stationName: String? = null
     private var pollJob: Job? = null
-    private var artworkJob: Job? = null
+    private var lookupJob: Job? = null
     private var stationSong: SongInfo? = null
     private var stationSongAvailable = false
     private var streamSong: SongInfo? = null
@@ -53,8 +53,8 @@ internal class SongManager(
             source = nextSource
             pollJob?.cancel()
             pollJob = null
-            artworkJob?.cancel()
-            artworkJob = null
+            lookupJob?.cancel()
+            lookupJob = null
             stationSong = null
             stationSongAvailable = false
             if (!sameStream) streamSong = null
@@ -126,19 +126,19 @@ internal class SongManager(
         val song = preferredSong()
         if (!preferenceChanged && songWithoutLookup == song) return
         songWithoutLookup = song
-        artworkJob?.cancel()
-        artworkJob = null
+        lookupJob?.cancel()
+        lookupJob = null
         publishSong(stationId, song)
-        if (!musicBrainzEnabled || song?.artist == null || song.artworkUrl != null || song.artworkData != null) return
+        if (!musicBrainzEnabled || song?.artist == null) return
 
-        artworkJob = scope.launch {
-            val artwork = try {
-                findArtwork(song)
+        lookupJob = scope.launch {
+            val enriched = try {
+                enrichSong(song)
             } catch (_: IOException) {
-                null
+                return@launch
             }
             ensureActive()
-            if (artwork != null) publishSong(stationId, song.copy(artworkUrl = artwork))
+            publishSong(stationId, enriched)
         }
     }
 

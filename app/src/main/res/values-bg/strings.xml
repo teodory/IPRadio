@@ -7,8 +7,8 @@
     <string name="done_editing_stations">Приключи редактирането</string>
     <string name="dark_mode">Тъмен режим</string>
     <string name="big_player">Голям плейър</string>
-    <string name="musicbrainz_artwork">Търси обложки с MusicBrainz</string>
-    <string name="musicbrainz_artwork_description">Търси, когато радиото не подава обложка.</string>
+    <string name="musicbrainz_artwork">Използвай MusicBrainz за песните</string>
+    <string name="musicbrainz_artwork_description">Уточнява изписването на изпълнителя и песента при съвпадение и търси липсващи обложки.</string>
     <string name="add_radio">Добави станция</string>
     <string name="edit_radio">Редактирай %1$s</string>
     <string name="move_station_up">Премести %1$s нагоре</string>

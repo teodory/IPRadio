@@ -105,7 +105,7 @@ internal fun String.normalizedSongText(): String =
         .trim()
         .lowercase(Locale.ROOT)
 
-private fun String.usableSongText(): String? {
+internal fun String.usableSongText(): String? {
     val text = trim().removePrefix("\uFEFF").trim()
     return text.takeIf {
         it.isNotEmpty() && it != "-" && !it.any(Char::isISOControl) && !htmlTag.containsMatchIn(it) &&

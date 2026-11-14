@@ -286,10 +286,11 @@ class PlaybackService : MediaLibraryService() {
             (song?.artworkUrl ?: customArtworkUrl?.takeIf { playableSource })?.let(Uri::parse)
                 ?: Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/$resource")
         }
+        val stationTitle = if (playableSource) "📻 $name" else name
         return MediaMetadata.Builder()
             .setTitle(song?.title ?: name)
-            .setDisplayTitle(name)
-            .setSubtitle(song?.displayTitle)
+            .setDisplayTitle(song?.artist?.let { "$stationTitle · $it" } ?: stationTitle)
+            .setSubtitle(song?.title)
             .setArtist(song?.artist)
             .setArtworkUri(artwork)
             .setArtworkData(song?.artworkData, MediaMetadata.PICTURE_TYPE_FRONT_COVER)

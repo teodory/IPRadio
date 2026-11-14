@@ -19,7 +19,9 @@ class SongManagerTest {
     @Test(timeout = 5000)
     fun enablingCoverLookupUpdatesCurrentSongAndDisablingRemovesTheCover() = runBlocking {
         val published = Channel<SongInfo?>(Channel.UNLIMITED)
-        val manager = SongManager(this, findArtwork = { "https://example.org/catalog.jpg" }) { _, song ->
+        val manager = SongManager(this, enrichSong = {
+            it.copy(artworkUrl = "https://example.org/catalog.jpg")
+        }) { _, song ->
             published.trySend(song)
         }
         manager.setStation(station("a").copy(infoDataUrl = ""))
@@ -37,15 +39,20 @@ class SongManagerTest {
     }
 
     @Test(timeout = 5000)
-    fun stationArtworkSkipsMusicBrainzLookup() = runBlocking {
+    fun stationArtworkStillAllowsMusicBrainzLookup() = runBlocking {
         val published = Channel<SongInfo?>(Channel.UNLIMITED)
-        val manager = SongManager(this, findArtwork = { error("Station already supplied artwork") }) { _, song ->
+        val manager = SongManager(this, enrichSong = { song ->
+            song.copy(title = "The Song", artist = "The Artist")
+        }) { _, song ->
             published.trySend(song)
         }
         manager.setMusicBrainzEnabled(true)
         manager.setStation(station("a").copy(infoDataUrl = ""))
-        val song = SongInfo("The Song", "The Artist", "https://example.org/station.jpg")
+        val song = SongInfo("THE SONG", "the artist", "https://example.org/station.jpg")
         manager.setStreamSong("a", song)
+        assertEquals(song, published.receive())
+        assertEquals(song.copy(title = "The Song", artist = "The Artist"), published.receive())
+        manager.setMusicBrainzEnabled(false)
         assertEquals(song, published.receive())
         manager.setStation(null)
     }
@@ -55,12 +62,12 @@ class SongManagerTest {
         val published = mutableListOf<Pair<String, SongInfo?>>()
         val started = CompletableDeferred<Unit>()
         val release = CountDownLatch(1)
-        val manager = SongManager(this, findArtwork = {
-            withContext(Dispatchers.IO) {
+        val manager = SongManager(this, enrichSong = { song ->
+            if (song.title == "First") withContext(Dispatchers.IO) {
                 started.complete(Unit)
                 check(release.await(3, TimeUnit.SECONDS))
-                "https://example.org/old.jpg"
-            }
+                song.copy(artworkUrl = "https://example.org/old.jpg")
+            } else song
         }) { id, song -> published.add(id to song) }
         val first = SongInfo("First", "Artist")
         val next = SongInfo("Next", "Artist", "https://example.org/next.jpg")

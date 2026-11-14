@@ -145,7 +145,9 @@ class MainActivity : ComponentActivity() {
         val active = player.playWhenReady &&
             (player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_READY)
         val metadata = player.mediaMetadata
-        val song = metadata.subtitle?.toString().orEmpty()
+        val song = metadata.subtitle?.let { title ->
+            SongInfo(title.toString(), metadata.artist?.toString()).displayTitle
+        }.orEmpty()
         playback = PlaybackUiState(
             connected = true,
             stationId = player.currentMediaItem?.mediaId,

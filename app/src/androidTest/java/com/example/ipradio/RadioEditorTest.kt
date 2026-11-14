@@ -68,7 +68,7 @@ class RadioEditorTest {
     @Test
     fun musicBrainzSettingSurvivesActivityRecreation() {
         compose.onNodeWithContentDescription("Settings").performClick()
-        val toggle = compose.onNodeWithText("Find cover art with MusicBrainz")
+        val toggle = compose.onNodeWithText(compose.activity.getString(R.string.musicbrainz_artwork))
         toggle.assertIsDisplayed()
         val initiallyOn = toggle.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ToggleableState] ==
             androidx.compose.ui.state.ToggleableState.On

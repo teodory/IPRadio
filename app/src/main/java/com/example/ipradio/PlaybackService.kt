@@ -40,6 +40,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import java.util.Locale
 import java.util.UUID
 
 @OptIn(UnstableApi::class)
@@ -92,7 +93,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
-        VoiceDiagnostics.record(this, "service_created")
+        VoiceDiagnostics.record(this, "service_created label=${getString(R.string.app_name)}")
         catalog = StationCatalog.getInstance(this)
         val dataSourceFactory = ResolvingDataSource.Factory(DefaultDataSource.Factory(this)) { request ->
             // Radio Antena rejects stream requests without its website as the Referer.
@@ -509,6 +510,34 @@ class PlaybackService : MediaLibraryService() {
 internal fun findStations(stations: List<Station>, query: String): List<Station> {
     val name = query.trim()
     if (name.isEmpty()) return emptyList()
-    return stations.filter { it.name.contains(name, ignoreCase = true) }
-        .sortedByDescending { it.name.equals(name, ignoreCase = true) }
+    val key = name.voiceSearchKey()
+    return stations.mapNotNull { station ->
+        val rank = when {
+            station.name.equals(name, ignoreCase = true) -> 4
+            key.isNotEmpty() && station.name.voiceSearchKey() == key -> 3
+            voiceStationAliases[station.id]?.any { it.voiceSearchKey() == key } == true -> 2
+            station.name.contains(name, ignoreCase = true) -> 1
+            else -> 0
+        }
+        if (rank == 0) null else station to rank
+    }.sortedByDescending { it.second }.map { it.first }
 }
+
+private val voiceStationAliases = mapOf(
+    "zrock" to listOf("Zirock", "Зи Рок", "Зет Рок"),
+    "1rock" to listOf("Radio 1 Rock", "One Rock", "Радио 1 Рок", "Радио Едно Рок"),
+    "darik" to listOf("Darik Radio", "Radio Darik", "Радио Дарик", "Дарик"),
+    "fmplus" to listOf("FM Plus Radio", "ФМ Плюс", "Радио ФМ Плюс"),
+    "magic-fm" to listOf("Magic Radio", "Меджик ФМ", "Радио Меджик"),
+    "tangra-mega-rock" to listOf("Radio Tangra", "Тангра Мега Рок", "Радио Тангра"),
+    "rockfm" to listOf("Рок ФМ", "Радио Рок ФМ"),
+    "cadena100" to listOf("Cadena Cien", "Кадена сто", "Радио Кадена 100"),
+    "soft-rock-radio" to listOf("Soft Rock Radio", "Soft Rock", "Софт Рок Радио"),
+    "melody" to listOf("Radio Melody", "Мелъди", "Радио Мелоди"),
+    "radio-antena" to listOf("Radio Antena", "Antena Radio", "Антена"),
+    "btv-radio" to listOf("БТВ Радио", "Би Ти Ви Радио", "Радио БТВ")
+)
+
+private fun String.voiceSearchKey(): String = lowercase(Locale.ROOT)
+    .replace("+", "plus")
+    .filter(Char::isLetterOrDigit)

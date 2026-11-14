@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">IPRadio</string>
+    <string name="app_name">IP Radio</string>
     <string name="stations">Stations</string>
     <string name="settings">Settings</string>
     <string name="back_to_stations">Back to stations</string>

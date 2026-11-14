@@ -22,7 +22,8 @@ class StationCatalogTest {
         val stations = StationCatalog(storeFile()).stations.value
         assertEquals(
             listOf("ZRock", "1Rock", "Darik", "FM+", "Magic FM", "Tangra Mega Rock",
-                "RockFM", "Cadena100", "SoftRockRadio.net", "Melody", "Радио Антена", "bTV Radio"),
+                "RockFM", "Cadena100", "SoftRockRadio.net", "Melody", "Радио Антена", "bTV Radio",
+                "Radio 1", "Radio ENERGY", "Radio Paradise Rock Mix", "FluxFM", "Radio Swiss Pop"),
             stations.map { it.name }
         )
         assertEquals(stations.size, stations.map { it.id }.toSet().size)

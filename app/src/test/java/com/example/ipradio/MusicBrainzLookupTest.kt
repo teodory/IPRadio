@@ -342,4 +342,54 @@ class MusicBrainzLookupTest {
         assertEquals("https://coverartarchive.org/release/33333333-3333-3333-3333-333333333333/front-250",
             lookup.enrich(SongInfo("One Song", "The Artist")).artworkUrl)
     }
+
+    @Test
+    fun prefersAnArtistReleaseOverAnEarlierVariousArtistsCompilation() = runBlocking {
+        val artistCover = "https://coverartarchive.org/release/22222222-2222-2222-2222-222222222222/front-250"
+        val lookup = MusicBrainzLookup(search = {
+            """{"count":1,"recordings":[{
+                "title":"Beautiful","artist-credit":[{"name":"Christina Aguilera",
+                    "artist":{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}}],
+                "releases":[
+                    {"id":"11111111-1111-1111-1111-111111111111",
+                     "artist-credit":[{"name":"Various Artists","artist":{"id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}}],
+                     "release-group":{"primary-type":"Album","secondary-types":["Compilation"]}},
+                    {"id":"22222222-2222-2222-2222-222222222222",
+                     "artist-credit":[{"name":"Christina Aguilera","artist":{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}}],
+                     "release-group":{"primary-type":"Single","secondary-types":[]}}
+                ]
+            }]}"""
+        }, hasCover = { true })
+
+        assertEquals(artistCover, lookup.enrich(SongInfo("Beautiful", "Christina Aguilera")).artworkUrl)
+    }
+
+    @Test
+    fun doesNotBorrowArtworkFromAnUnrelatedReleaseArtist() = runBlocking {
+        val lookup = MusicBrainzLookup(search = {
+            """{"count":1,"recordings":[{
+                "title":"One Song","artist-credit":[{"name":"The Artist"}],
+                "releases":[{"id":"11111111-1111-1111-1111-111111111111",
+                    "artist-credit":[{"name":"Various Artists"}],
+                    "release-group":{"primary-type":"Album","secondary-types":["Compilation"]}}]
+            }]}"""
+        }, hasCover = { error("Unrelated release art must not be checked") })
+
+        assertEquals(SongInfo("One Song", "The Artist"), lookup.enrich(SongInfo("One Song", "The Artist")))
+    }
+
+    @Test
+    fun acceptsAReleaseCreditedToOneCollaboratingArtist() = runBlocking {
+        val cover = "https://coverartarchive.org/release/33333333-3333-3333-3333-333333333333/front-250"
+        val lookup = MusicBrainzLookup(search = {
+            """{"count":1,"recordings":[{"title":"Together","artist-credit":[
+                {"name":"Artist One","joinphrase":" & ","artist":{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}},
+                {"name":"Artist Two","artist":{"id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}}],
+                "releases":[{"id":"33333333-3333-3333-3333-333333333333",
+                    "artist-credit":[{"name":"Artist Two","artist":{"id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}}]}]
+            }]}"""
+        }, hasCover = { true })
+
+        assertEquals(cover, lookup.enrich(SongInfo("Together", "Artist One & Artist Two")).artworkUrl)
+    }
 }

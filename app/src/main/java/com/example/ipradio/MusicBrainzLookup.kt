@@ -258,9 +258,33 @@ internal class MusicBrainzLookup(
         lastSearchAt = System.nanoTime()
     }
 
-    private fun coverUrls(recordings: List<JsonObject>): List<String> = recordings
-        .flatMap { (it["releases"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>() }
-        .sortedBy { release ->
+    private fun coverUrls(recordings: List<JsonObject>): List<String> {
+        var skipped = 0
+        val releases = recordings.flatMap { recording ->
+            val credits = (recording["artist-credit"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+            val artistIds = credits.mapNotNull { (it["artist"] as? JsonObject)?.stringOrNull("id") }.toSet()
+            val artistNames = credits.mapNotNull {
+                it.stringOrNull("name") ?: (it["artist"] as? JsonObject)?.stringOrNull("name")
+            }.map { it.normalizedSongText() }.toSet()
+            (recording["releases"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { release ->
+                val releaseCredits = (release["artist-credit"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+                val belongsToArtist = releaseCredits.any { credit ->
+                    val artist = credit["artist"] as? JsonObject
+                    val artistId = artist?.stringOrNull("id")
+                    if (artistId != null && artistIds.isNotEmpty()) artistId in artistIds
+                    else (credit.stringOrNull("name") ?: artist?.stringOrNull("name"))
+                        ?.normalizedSongText() in artistNames
+                }
+                if (releaseCredits.isNotEmpty() && !belongsToArtist) {
+                    skipped++
+                    null
+                } else {
+                    release to belongsToArtist
+                }
+            }
+        }
+        if (skipped > 0) trace("cover releases skipped=$skipped: different release artist")
+        return releases.sortedWith(compareBy<Pair<JsonObject, Boolean>> { !it.second }.thenBy { (release) ->
             val group = release["release-group"] as? JsonObject
             when {
                 release.stringOrNull("status") == "Bootleg" -> 2
@@ -268,11 +292,12 @@ internal class MusicBrainzLookup(
                     (group["secondary-types"] as? JsonArray).isNullOrEmpty() -> 0
                 else -> 1
             }
-        }
-        .mapNotNull { it.stringOrNull("id")?.takeIf(releaseId::matches) }
-        .distinct()
-        .take(5)
-        .map { "https://coverartarchive.org/release/$it/front-250" }
+        })
+            .mapNotNull { (release) -> release.stringOrNull("id")?.takeIf(releaseId::matches) }
+            .distinct()
+            .take(5)
+            .map { "https://coverartarchive.org/release/$it/front-250" }
+    }
 
     private fun JsonObject.creditedArtist(): String =
         (get("artist-credit") as? JsonArray).orEmpty()

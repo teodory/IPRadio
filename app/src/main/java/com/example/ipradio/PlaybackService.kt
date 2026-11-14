@@ -108,7 +108,11 @@ class PlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
-        songManager = SongManager(serviceScope, publish = ::publishSong)
+        songManager = SongManager(
+            serviceScope,
+            trace = { MetadataDiagnostics.record(this, it) },
+            publish = ::publishSong
+        )
         radioPreferences.registerOnSharedPreferenceChangeListener(preferenceListener)
         songManager.setMusicBrainzEnabled(radioPreferences.getBoolean(MUSICBRAINZ_ARTWORK_ENABLED, false))
         player.addListener(playbackListener)

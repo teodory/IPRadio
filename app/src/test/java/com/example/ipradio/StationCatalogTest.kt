@@ -196,6 +196,20 @@ class StationCatalogTest {
     }
 
     @Test
+    fun updatesOnlyTheBrokenDefaultOneRockMetadataUrl() {
+        val file = storeFile()
+        val oldUrl = "https://meta.metacast.eu/aim/?radio=radio1rock"
+        val savedStation = """[{"id":"1rock","name":"1Rock","url":"http://149.13.0.81/radio1rock.ogg","image":"","infoDataUrl":"$oldUrl"}]"""
+        file.writeText(savedStation)
+        assertEquals("http://meta.metacast.eu/aim/?radio=radio1rock",
+            StationCatalog(file).stations.value.first().infoDataUrl)
+
+        val customUrl = "https://example.org/nowplaying"
+        file.writeText(savedStation.replace(oldUrl, customUrl))
+        assertEquals(customUrl, StationCatalog(file).stations.value.first().infoDataUrl)
+    }
+
+    @Test
     fun rejectsInvalidFieldsAndUnknownIdWithoutChangingTheCatalog() = runBlocking {
         val file = storeFile()
         val catalog = StationCatalog(file)

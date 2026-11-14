@@ -61,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -472,6 +473,7 @@ private fun PlayerCard(
 
 @Composable
 private fun StationArtwork(station: Station?, size: Dp, songArtwork: Any? = null) {
+    val context = LocalContext.current
     val logo = station?.logo?.takeIf { it != 0 }
     val image = station?.customArtworkUrl
     val fallback = painterResource(logo ?: R.drawable.radio_224dp_sz48)
@@ -496,6 +498,14 @@ private fun StationArtwork(station: Station?, size: Dp, songArtwork: Any? = null
                 model = songArtwork,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                onSuccess = {
+                    MetadataDiagnostics.record(context,
+                        "artwork_loaded station=${station?.id} model=${songArtwork.toString().take(180)}")
+                },
+                onError = {
+                    MetadataDiagnostics.record(context,
+                        "artwork_failed station=${station?.id} model=${songArtwork.toString().take(180)} error=${it.result.throwable.javaClass.simpleName}: ${it.result.throwable.message}")
+                },
                 modifier = Modifier.fillMaxSize()
             )
         }

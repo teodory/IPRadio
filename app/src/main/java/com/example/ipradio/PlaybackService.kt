@@ -535,7 +535,12 @@ private val voiceStationAliases = mapOf(
     "soft-rock-radio" to listOf("Soft Rock Radio", "Soft Rock", "Софт Рок Радио"),
     "melody" to listOf("Radio Melody", "Мелъди", "Радио Мелоди"),
     "radio-antena" to listOf("Radio Antena", "Antena Radio", "Антена"),
-    "btv-radio" to listOf("БТВ Радио", "Би Ти Ви Радио", "Радио БТВ")
+    "btv-radio" to listOf("БТВ Радио", "Би Ти Ви Радио", "Радио БТВ"),
+    "radio1" to listOf("Radio One", "Радио 1", "Радио Едно", "Рейдио Уан"),
+    "radio-energy" to listOf("Energy", "NRJ", "Радио Енерджи", "Енерджи", "Ен Ар Джей"),
+    "radio-paradise-rock" to listOf("Paradise Rock", "Radio Paradise Rock", "Радио Парадайз Рок", "Радио Парадайс Рок"),
+    "fluxfm" to listOf("Flux FM", "Радио Флукс", "Флукс ФМ", "Флакс ФМ"),
+    "radio-swiss-pop" to listOf("Swiss Pop", "Радио Суис Поп", "Радио Свис Поп", "Швейцарско Поп Радио")
 )
 
 private fun String.voiceSearchKey(): String = lowercase(Locale.ROOT)

@@ -99,6 +99,40 @@ internal val defaultStations = listOf(
         "https://cdn.bweb.bg/radio/btv-radio.mp3",
         "https://btvnovinite.bg/static/bg/microsites/btvnovinite/img/logos/btv_radio.png",
         logo = R.drawable.station_btv_radio
+    ),
+    Station(
+        "radio1", "Radio 1",
+        "https://play.global.audio/radio1128?dist=WEBSITEBG",
+        "https://media.metacast.eu/pictures/11_2015/k1RAhBlx0YU67dP5uVOc-7898.png",
+        logo = R.drawable.station_radio1,
+        infoDataUrl = "http://meta.metacast.eu/aim/?radio=radio1",
+        metadataFormat = MetadataFormat.METACAST
+    ),
+    Station(
+        "radio-energy", "Radio ENERGY",
+        "https://playerservices.streamtheworld.com/api/livestream-redirect/RADIO_ENERGYAAC_H.aac?dist=WEBSITEBG",
+        "https://media.metacast.eu/pictures/10_2015/OdriLYWpbHJqKDAcGCMv-7384.png",
+        logo = R.drawable.station_energy,
+        infoDataUrl = "http://meta.metacast.eu/aim/?radio=radioenergy",
+        metadataFormat = MetadataFormat.METACAST
+    ),
+    Station(
+        "radio-paradise-rock", "Radio Paradise Rock Mix",
+        "https://stream.radioparadise.com/rock-128",
+        "https://radioparadise.com/apple-touch-icon.png",
+        logo = R.drawable.station_paradise_rock
+    ),
+    Station(
+        "fluxfm", "FluxFM",
+        "https://channels.fluxfm.de/FluxFM/externalembedflxhp/stream.mp3",
+        "https://www.fluxfm.de/assets/favicons/android-icon-192x192.png",
+        logo = R.drawable.station_fluxfm
+    ),
+    Station(
+        "radio-swiss-pop", "Radio Swiss Pop",
+        "https://stream.srg-ssr.ch/srgssr/rsp/aac/192",
+        "https://www.radioswisspop.ch/social-media/rsp-web.png",
+        logo = R.drawable.station_swiss_pop
     )
 )
 

@@ -221,15 +221,24 @@ internal class MusicBrainzLookup(
     }
 
     private suspend fun requestJson(url: String): JsonObject? {
-        waitForSearchSlot()
-        val response = try {
-            search(url)
-        } catch (error: IOException) {
-            trace("search error=${error.javaClass.simpleName}: ${error.message}; retrying")
+        var retryDelayMs = 2_000L
+        var retriedOtherError = false
+        while (true) {
             waitForSearchSlot()
-            search(url)
+            try {
+                return search(url)?.let(::parseObject)
+            } catch (error: IOException) {
+                if (error is MetadataHttpException && (error.status == 503 || error.status == 429)) {
+                    trace("search HTTP ${error.status}; retry same request in ${retryDelayMs}ms")
+                    delay(retryDelayMs)
+                    retryDelayMs = (retryDelayMs * 2).coerceAtMost(30_000L)
+                } else {
+                    if (retriedOtherError) throw error
+                    retriedOtherError = true
+                    trace("search error=${error.javaClass.simpleName}: ${error.message}; retrying")
+                }
+            }
         }
-        return response?.let(::parseObject)
     }
 
     private fun String.isOneEditFrom(other: String): Boolean {

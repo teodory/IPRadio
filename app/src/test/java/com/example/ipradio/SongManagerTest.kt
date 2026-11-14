@@ -4,6 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -19,7 +20,7 @@ import java.util.concurrent.TimeUnit
 
 class SongManagerTest {
     @Test(timeout = 4000)
-    fun skipsLookupForStationLeftDuringShortDelay() = runBlocking {
+    fun startsAfterIdleButSkipsStationsLeftDuringRapidSwitches() = runBlocking {
         val lookups = Channel<String>(Channel.UNLIMITED)
         val manager = SongManager(this, enrichSong = { song ->
             lookups.trySend(song.title)
@@ -28,13 +29,34 @@ class SongManagerTest {
         manager.setMusicBrainzEnabled(true)
         manager.setStation(station("a").copy(infoDataUrl = ""))
         manager.setStreamSong("a", SongInfo("First", "Artist"))
-        yield()
-        assertTrue("Lookup started before the station settled", lookups.tryReceive().isFailure)
+        assertEquals("First", withTimeout(800) { lookups.receive() })
 
         manager.setStation(station("b").copy(infoDataUrl = ""))
         manager.setStreamSong("b", SongInfo("Second", "Artist"))
-        assertEquals("Second", withTimeout(2_500) { lookups.receive() })
+        yield()
+        assertTrue("Rapidly left station was searched", lookups.tryReceive().isFailure)
+        manager.setStation(station("c").copy(infoDataUrl = ""))
+        manager.setStreamSong("c", SongInfo("Third", "Artist"))
+        assertEquals("Third", withTimeout(2_500) { lookups.receive() })
         assertTrue(lookups.tryReceive().isFailure)
+        manager.setStation(null)
+    }
+
+    @Test(timeout = 6_000)
+    fun startsTheNextSongImmediatelyAfterAQuietPeriod() = runBlocking {
+        val lookups = Channel<String>(Channel.UNLIMITED)
+        val manager = SongManager(this, enrichSong = { song ->
+            lookups.trySend(song.title)
+            song
+        }) { _, _ -> }
+        manager.setMusicBrainzEnabled(true)
+        manager.setStation(station("a").copy(infoDataUrl = ""))
+        manager.setStreamSong("a", SongInfo("First", "Artist"))
+        assertEquals("First", withTimeout(800) { lookups.receive() })
+
+        delay(3_100)
+        manager.setStreamSong("a", SongInfo("Second", "Artist"))
+        assertEquals("Second", withTimeout(800) { lookups.receive() })
         manager.setStation(null)
     }
 

@@ -8,6 +8,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.net.SocketException
 import java.net.URLDecoder
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -173,6 +174,56 @@ class MusicBrainzLookupTest {
 
             assertEquals(SongInfo("Love Again", "Dua Lipa"), lookup.enrich(SongInfo("LOVE AGAIN", "DUA LIPA")))
             assertEquals(2, requests.get())
+        } finally {
+            server.close()
+            worker.join(2_000)
+        }
+    }
+
+    @Test(timeout = 15_000)
+    fun retriesOnlyTheFailedFallbackRequestAfterRepeated503s() = runBlocking {
+        val requests = AtomicInteger()
+        val attempts = mutableListOf<Pair<String, Long>>()
+        val server = ServerSocket(0, 4, InetAddress.getLoopbackAddress())
+        val worker = Thread {
+            try {
+                repeat(4) {
+                    server.accept().use { socket ->
+                        val request = BufferedReader(InputStreamReader(socket.getInputStream()))
+                        while (!request.readLine().isNullOrEmpty()) Unit
+                        val number = requests.incrementAndGet()
+                        val status = if (number == 2 || number == 3) 503 else 200
+                        val body = when (number) {
+                            1 -> """{"count":0,"recordings":[]}"""
+                            4 -> """{"count":1,"recordings":[
+                                {"title":"Don't Stop","artist-credit":[{"name":"Fleetwood Mac"}]}
+                            ]}"""
+                            else -> "busy"
+                        }
+                        val bytes = body.toByteArray()
+                        socket.getOutputStream().write(
+                            "HTTP/1.1 $status Test\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n".toByteArray() + bytes
+                        )
+                    }
+                }
+            } catch (_: SocketException) {
+                // The test closes the server after a failed lookup.
+            }
+        }
+        worker.start()
+        try {
+            val localUrl = "http://127.0.0.1:${server.localPort}/recording"
+            val lookup = MusicBrainzLookup(search = { target ->
+                attempts += URLDecoder.decode(target, "UTF-8") to System.nanoTime()
+                fetchMetadata(localUrl)
+            })
+
+            assertEquals(SongInfo("Don't Stop", "Fleetwood Mac"),
+                lookup.enrich(SongInfo("DONT STOP", "FLEETWOOD MAC")))
+            assertEquals(1, attempts.count { it.first.contains("recording:\"DONT STOP\"") })
+            assertEquals(3, attempts.count { it.first.contains("recording:\"DON'T STOP\"") })
+            assertTrue((attempts[2].second - attempts[1].second) >= 1_900_000_000L)
+            assertTrue((attempts[3].second - attempts[2].second) >= 3_900_000_000L)
         } finally {
             server.close()
             worker.join(2_000)

@@ -118,7 +118,7 @@ internal val defaultStations = listOf(
         metadataFormat = MetadataFormat.METACAST
     ),
     Station(
-        "radio-paradise-rock", "Radio Paradise Rock Mix",
+        "radio-paradise-rock", "Radio Paradise",
         "https://stream.radioparadise.com/rock-128",
         "https://radioparadise.com/apple-touch-icon.png",
         logo = R.drawable.station_paradise_rock

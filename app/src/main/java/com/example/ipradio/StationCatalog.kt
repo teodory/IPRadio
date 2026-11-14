@@ -112,6 +112,8 @@ class StationCatalog internal constructor(private val file: File) {
             val id = fields.string("id")
             require(id.isNotBlank())
             val builtIn = defaultStationsById[id]
+            val savedName = fields.string("name")
+            val name = if (builtIn != null && savedName == previousDefaultNames[id]) builtIn.name else savedName
             val savedUrl = fields.string("url")
             val url = if (builtIn != null && savedUrl == previousDefaultStreams[id]) builtIn.url else savedUrl
             val savedMetadataUrl = fields.string("infoDataUrl")
@@ -122,7 +124,7 @@ class StationCatalog internal constructor(private val file: File) {
                 require(field is JsonPrimitive)
                 field.booleanOrNull ?: throw IllegalArgumentException("Invalid station state.")
             } ?: true
-            validatedStation(id, fields.string("name"), url, fields.string("image"), metadataUrl, builtIn, enabled)
+            validatedStation(id, name, url, fields.string("image"), metadataUrl, builtIn, enabled)
         }
         val ids = stations.map(Station::id).toSet()
         require(stations.isNotEmpty() && ids.size == stations.size)
@@ -175,6 +177,9 @@ private fun JsonObject.string(key: String): String {
 
 private val webSchemes = setOf("http", "https")
 private val streamSchemes = webSchemes + setOf("rtsp", "udp")
+private val previousDefaultNames = mapOf(
+    "radio-paradise-rock" to "Radio Paradise Rock Mix"
+)
 private val previousDefaultStreams = mapOf(
     "rockfm" to "https://rockfm-cope.flumotion.com/chunks.m3u8",
     "fmplus" to "http://193.108.24.21:8000/fmplus?file=.mp3"

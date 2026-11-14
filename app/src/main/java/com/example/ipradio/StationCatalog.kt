@@ -109,7 +109,11 @@ class StationCatalog internal constructor(private val file: File) {
             val builtIn = defaultStationsById[id]
             val savedUrl = fields.string("url")
             val url = if (builtIn != null && savedUrl == previousDefaultStreams[id]) builtIn.url else savedUrl
-            validatedStation(id, fields.string("name"), url, fields.string("image"), fields.string("infoDataUrl"), builtIn)
+            val savedMetadataUrl = fields.string("infoDataUrl")
+            val metadataUrl = if (builtIn != null && savedMetadataUrl == previousDefaultMetadata[id]) {
+                builtIn.infoDataUrl
+            } else savedMetadataUrl
+            validatedStation(id, fields.string("name"), url, fields.string("image"), metadataUrl, builtIn)
         }
         val ids = stations.map(Station::id).toSet()
         require(stations.isNotEmpty() && ids.size == stations.size)
@@ -168,6 +172,9 @@ private val previousDefaultStreams = mapOf(
 private val previousDefaultArtwork = mapOf(
     "fmplus" to "http://fmplus.net/playernew/i/logo_fmplus.png",
     "tangra-mega-rock" to "http://www.radiotangra.com/img/logo_tangra.png"
+)
+private val previousDefaultMetadata = mapOf(
+    "1rock" to "https://meta.metacast.eu/aim/?radio=radio1rock"
 )
 
 private fun validatedStation(

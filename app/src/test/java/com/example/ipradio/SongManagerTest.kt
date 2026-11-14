@@ -6,6 +6,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -16,6 +18,26 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class SongManagerTest {
+    @Test(timeout = 4000)
+    fun skipsLookupForStationLeftDuringShortDelay() = runBlocking {
+        val lookups = Channel<String>(Channel.UNLIMITED)
+        val manager = SongManager(this, enrichSong = { song ->
+            lookups.trySend(song.title)
+            song
+        }) { _, _ -> }
+        manager.setMusicBrainzEnabled(true)
+        manager.setStation(station("a").copy(infoDataUrl = ""))
+        manager.setStreamSong("a", SongInfo("First", "Artist"))
+        yield()
+        assertTrue("Lookup started before the station settled", lookups.tryReceive().isFailure)
+
+        manager.setStation(station("b").copy(infoDataUrl = ""))
+        manager.setStreamSong("b", SongInfo("Second", "Artist"))
+        assertEquals("Second", withTimeout(2_500) { lookups.receive() })
+        assertTrue(lookups.tryReceive().isFailure)
+        manager.setStation(null)
+    }
+
     @Test(timeout = 5000)
     fun enablingCoverLookupUpdatesCurrentSongAndDisablingRemovesTheCover() = runBlocking {
         val published = Channel<SongInfo?>(Channel.UNLIMITED)
@@ -54,6 +76,26 @@ class SongManagerTest {
         assertEquals(song.copy(title = "The Song", artist = "The Artist"), published.receive())
         manager.setMusicBrainzEnabled(false)
         assertEquals(song, published.receive())
+        manager.setStation(null)
+    }
+
+    @Test(timeout = 5000)
+    fun retriesFailedLookupWhileTheSameSongKeepsPlaying() = runBlocking {
+        val published = Channel<SongInfo?>(Channel.UNLIMITED)
+        var attempts = 0
+        val manager = SongManager(this, enrichSong = { song ->
+            if (++attempts == 1) throw IOException("Temporary MusicBrainz failure")
+            song.copy(title = "The Song", artist = "The Artist")
+        }) { _, song -> published.trySend(song) }
+        manager.setMusicBrainzEnabled(true)
+        manager.setStation(station("a").copy(infoDataUrl = ""))
+        val original = SongInfo("THE SONG", "THE ARTIST")
+        manager.setStreamSong("a", original)
+
+        assertEquals(original, published.receive())
+        assertEquals(original.copy(title = "The Song", artist = "The Artist"),
+            withTimeout(3_500) { published.receive() })
+        assertEquals(2, attempts)
         manager.setStation(null)
     }
 

@@ -29,7 +29,7 @@ internal val defaultStations = listOf(
         "http://149.13.0.81/radio1rock.ogg",
         "https://www.radio1rock.bg/theme_assets/radio1rock/images/logo.png?v=0",
         logo = R.drawable.station_rock1,
-        infoDataUrl = "https://meta.metacast.eu/aim/?radio=radio1rock",
+        infoDataUrl = "http://meta.metacast.eu/aim/?radio=radio1rock",
         metadataFormat = MetadataFormat.METACAST
     ),
     Station(

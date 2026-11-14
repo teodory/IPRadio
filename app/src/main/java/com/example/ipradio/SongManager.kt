@@ -16,9 +16,10 @@ import java.net.URL
 
 internal class SongManager(
     private val scope: CoroutineScope,
-    private val fetch: suspend (String) -> String? = { fetchMetadata(it) },
+    private val trace: (String) -> Unit = {},
+    private val fetch: suspend (String) -> String? = { fetchMetadata(it, trace = trace) },
     private val waitForNextPoll: suspend (Long) -> Unit = { delay(it) },
-    private val enrichSong: suspend (SongInfo) -> SongInfo = MusicBrainzLookup()::enrich,
+    private val enrichSong: suspend (SongInfo) -> SongInfo = MusicBrainzLookup(trace = trace)::enrich,
     private val publish: (stationId: String, song: SongInfo?) -> Unit,
 ) {
     private data class Source(
@@ -48,6 +49,7 @@ internal class SongManager(
             Source(it.id, it.url, it.songDataUrl, it.metadataFormat)
         }
         if (source != nextSource) {
+            trace("source ${source?.stationId} -> ${nextSource?.stationId} format=${nextSource?.format} url=${nextSource?.infoUrl}")
             val sameStream = nextSource != null && source?.stationId == nextSource.stationId &&
                 source?.streamUrl == nextSource.streamUrl
             source = nextSource
@@ -64,6 +66,7 @@ internal class SongManager(
             if (sameStream) updateSong()
         }
         if (!poll) {
+            if (pollJob != null) trace("poll stopped station=${nextSource?.stationId}")
             pollJob?.cancel()
             pollJob = null
             return
@@ -75,13 +78,18 @@ internal class SongManager(
             while (isActive) {
                 val song = try {
                     withContext(Dispatchers.IO) {
-                        fetch(nextSource.infoUrl)?.let { parseSong(nextSource.format, it, nextSource.infoUrl) }
+                        val body = fetch(nextSource.infoUrl)
+                        body?.let { parseSong(nextSource.format, it, nextSource.infoUrl) }.also {
+                            trace("poll station=${nextSource.stationId} body=${body?.length ?: "null"} parsed=${it?.displayTitle?.take(120)} art=${it?.artworkUrl != null || it?.artworkData != null}${if (body != null && it == null) " sample=${body.take(120)}" else ""}")
+                        }
                     }
-                } catch (_: IOException) {
+                } catch (error: IOException) {
+                    trace("poll station=${nextSource.stationId} error=${error.javaClass.simpleName}: ${error.message}")
                     null
                 }
                 ensureActive()
                 val available = song != null && !isStationLabel(song)
+                if (song != null && !available) trace("poll station=${nextSource.stationId} ignored station label")
                 if (available) {
                     if (song != stationSong) {
                         delayIndex = 0
@@ -101,6 +109,7 @@ internal class SongManager(
         if (source?.stationId != stationId) return
         val next = song?.takeUnless(::isStationLabel)
         if (streamSong == next) return
+        trace("stream station=$stationId song=${next?.displayTitle?.take(120)} art=${next?.artworkData != null}")
         streamSong = next
         streamSongChangedSinceStationSong = true
         updateSong()
@@ -109,6 +118,7 @@ internal class SongManager(
     fun setMusicBrainzEnabled(enabled: Boolean) {
         if (musicBrainzEnabled == enabled) return
         musicBrainzEnabled = enabled
+        trace("musicbrainz enabled=$enabled")
         updateSong(preferenceChanged = true)
     }
 
@@ -126,19 +136,34 @@ internal class SongManager(
         val song = preferredSong()
         if (!preferenceChanged && songWithoutLookup == song) return
         songWithoutLookup = song
+        if (lookupJob?.isActive == true) trace("lookup cancelled station=$stationId")
         lookupJob?.cancel()
         lookupJob = null
         publishSong(stationId, song)
-        if (!musicBrainzEnabled || song?.artist == null) return
+        if (!musicBrainzEnabled || song?.artist == null) {
+            trace("lookup skipped station=$stationId reason=${if (!musicBrainzEnabled) "disabled" else "missing artist"}")
+            return
+        }
 
         lookupJob = scope.launch {
-            val enriched = try {
-                enrichSong(song)
-            } catch (_: IOException) {
-                return@launch
+            trace("lookup waiting station=$stationId 1000ms")
+            delay(1_000L)
+            var retryDelayMs = 2_000L
+            while (isActive) {
+                trace("lookup start station=$stationId song=${song.displayTitle.take(120)}")
+                val enriched = try {
+                    enrichSong(song)
+                } catch (error: IOException) {
+                    trace("lookup station=$stationId error=${error.javaClass.simpleName}: ${error.message}; retry in ${retryDelayMs}ms")
+                    delay(retryDelayMs)
+                    retryDelayMs = (retryDelayMs * 2).coerceAtMost(60_000L)
+                    continue
+                }
+                ensureActive()
+                trace("lookup result station=$stationId song=${enriched.displayTitle.take(120)} art=${enriched.artworkUrl ?: if (enriched.artworkData != null) "embedded" else "none"}")
+                publishSong(stationId, enriched)
+                break
             }
-            ensureActive()
-            publishSong(stationId, enriched)
         }
     }
 
@@ -159,6 +184,7 @@ internal class SongManager(
 
     private fun publishSong(stationId: String, song: SongInfo?) {
         if (currentSong == song) return
+        trace("publish station=$stationId song=${song?.displayTitle?.take(120)} art=${song?.artworkUrl ?: if (song?.artworkData != null) "embedded" else "none"}")
         currentSong = song
         publish(stationId, song)
     }
@@ -174,14 +200,22 @@ private const val MAX_BODY_BYTES = 64 * 1024
 internal suspend fun fetchMetadata(
     url: String,
     userAgent: String? = null,
-    maxBodyBytes: Int = MAX_BODY_BYTES
+    maxBodyBytes: Int = MAX_BODY_BYTES,
+    trace: (String) -> Unit = {},
 ): String? {
-    val connection = URL(url).openConnection() as? HttpURLConnection ?: return null
+    trace("GET $url")
+    val connection = URL(url).openConnection() as? HttpURLConnection ?: run {
+        trace("GET $url unsupported connection")
+        return null
+    }
     try {
         connection.connectTimeout = REQUEST_TIMEOUT_MS
         connection.readTimeout = REQUEST_TIMEOUT_MS
         userAgent?.let { connection.setRequestProperty("User-Agent", it) }
-        if (connection.responseCode !in 200..299 || connection.contentLength > maxBodyBytes) {
+        val status = connection.responseCode
+        if (status !in 200..299 || connection.contentLength > maxBodyBytes) {
+            trace("GET $url HTTP $status contentLength=${connection.contentLength} rejected")
+            if (status == 429 || status in 500..599) throw IOException("HTTP $status from $url")
             return null
         }
         val context = currentCoroutineContext()
@@ -192,9 +226,13 @@ internal suspend fun fetchMetadata(
                 context.ensureActive()
                 val count = input.read(buffer)
                 if (count == -1) break
-                if (body.size() + count > maxBodyBytes) return null
+                if (body.size() + count > maxBodyBytes) {
+                    trace("GET $url HTTP $status body too large")
+                    return null
+                }
                 body.write(buffer, 0, count)
             }
+            trace("GET $url HTTP $status bytes=${body.size()}")
             String(body.toByteArray(), Charsets.UTF_8)
         }
     } finally {

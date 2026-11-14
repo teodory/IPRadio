@@ -7,7 +7,8 @@ data class Station(
     val image: String = "",
     val logo: Int = 0,
     val infoDataUrl: String = "",
-    val metadataFormat: MetadataFormat? = null
+    val metadataFormat: MetadataFormat? = null,
+    val enabled: Boolean = true
 )
 
 enum class MetadataFormat { ZROCK, METACAST, MAGIC, FLUMOTION, PLAIN_TEXT }

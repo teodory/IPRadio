@@ -11,13 +11,17 @@ import androidx.activity.compose.setContent
 import androidx.annotation.StringRes
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -29,6 +33,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -71,11 +78,13 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val stations by catalog.stations.collectAsState()
+            val allStations by catalog.allStations.collectAsState()
             val darkModeEnabled = darkModeOverride ?: isSystemInDarkTheme()
             IPRadioTheme(darkTheme = darkModeEnabled) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     RadioScreen(
                         stations = stations,
+                        allStations = allStations,
                         playback = playback,
                         editor = editor,
                         musicBrainzEnabled = musicBrainzEnabled,
@@ -226,12 +235,13 @@ internal fun StationEditor(
     station: Station?,
     editor: StationEditorState,
     onDismiss: () -> Unit,
-    saveStation: suspend (String?, String, String, String, String) -> Result<Station>
+    saveStation: suspend (String?, String, String, String, String, Boolean) -> Result<Station>
 ) {
     var name by rememberSaveable { mutableStateOf(station?.name.orEmpty()) }
     var url by rememberSaveable { mutableStateOf(station?.url.orEmpty()) }
     var image by rememberSaveable { mutableStateOf(station?.image.orEmpty()) }
     var infoUrl by rememberSaveable { mutableStateOf(station?.infoDataUrl.orEmpty()) }
+    var enabled by rememberSaveable { mutableStateOf(station?.enabled ?: true) }
     val saving = editor.saving
     val error = editor.result?.exceptionOrNull()
     LaunchedEffect(editor.result) {
@@ -247,6 +257,18 @@ internal fun StationEditor(
                 TextField(url, { url = it }, enabled = !saving, label = { Text("URL") }, singleLine = true)
                 TextField(image, { image = it }, enabled = !saving, label = { Text("Image URL") }, singleLine = true)
                 TextField(infoUrl, { infoUrl = it }, enabled = !saving, label = { Text("Info URL") }, singleLine = true)
+                if (station?.id in defaultStationsById) {
+                    Row(
+                        Modifier.fillMaxWidth().toggleable(
+                            value = enabled, enabled = !saving, role = Role.Switch,
+                            onValueChange = { enabled = it }
+                        ),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(stringResource(R.string.station_enabled), Modifier.weight(1f))
+                        Switch(checked = enabled, onCheckedChange = null, enabled = !saving)
+                    }
+                }
                 if (error != null) {
                     Text(error.localizedMessage ?: "Couldn't save station.", color = MaterialTheme.colorScheme.error)
                 }
@@ -255,7 +277,7 @@ internal fun StationEditor(
         confirmButton = {
             Button(
                 enabled = !saving,
-                onClick = { editor.save(station?.id, name, url, image, infoUrl, saveStation) }
+                onClick = { editor.save(station?.id, name, url, image, infoUrl, enabled, saveStation) }
             ) {
                 Text(if (station == null) "Add" else "Save")
             }
@@ -278,13 +300,14 @@ internal class StationEditorState : ViewModel() {
         url: String,
         image: String,
         infoUrl: String,
-        saveStation: suspend (String?, String, String, String, String) -> Result<Station>
+        enabled: Boolean,
+        saveStation: suspend (String?, String, String, String, String, Boolean) -> Result<Station>
     ) {
         if (saving) return
         saving = true
         result = null
         viewModelScope.launch {
-            result = saveStation(id, name, url, image, infoUrl)
+            result = saveStation(id, name, url, image, infoUrl, enabled)
             saving = false
         }
     }

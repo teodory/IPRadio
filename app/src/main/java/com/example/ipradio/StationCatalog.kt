@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
@@ -32,7 +33,9 @@ class StationCatalog internal constructor(private val file: File) {
     } catch (error: Exception) {
         Result.failure(error)
     }
-    private val state = MutableStateFlow(loaded.getOrDefault(defaultStations))
+    private val allState = MutableStateFlow(loaded.getOrDefault(defaultStations))
+    val allStations: StateFlow<List<Station>> = allState.asStateFlow()
+    private val state = MutableStateFlow(allState.value.filter(Station::enabled))
     val stations: StateFlow<List<Station>> = state.asStateFlow()
 
     suspend fun save(
@@ -40,7 +43,8 @@ class StationCatalog internal constructor(private val file: File) {
         name: String,
         url: String,
         image: String,
-        infoDataUrl: String
+        infoDataUrl: String,
+        enabled: Boolean = true
     ): Result<Station> = updateStations { current ->
         val previous = id?.let { stationId ->
             current.firstOrNull { it.id == stationId }
@@ -48,7 +52,7 @@ class StationCatalog internal constructor(private val file: File) {
         }
         val station = validatedStation(
             previous?.id ?: UUID.randomUUID().toString(),
-            name, url, image, infoDataUrl, defaultStationsById[id]
+            name, url, image, infoDataUrl, defaultStationsById[id], enabled
         )
         val updated = if (previous == null) {
             current + station
@@ -79,11 +83,12 @@ class StationCatalog internal constructor(private val file: File) {
                 loaded.exceptionOrNull()?.let {
                     throw IOException("The saved station catalog could not be read.", it)
                 }
-                val current = state.value
+                val current = allState.value
                 val (updated, result) = transform(current)
                 if (updated !== current) {
                     writeStations(updated)
-                    state.value = updated
+                    allState.value = updated
+                    state.value = updated.filter(Station::enabled)
                 }
                 Result.success(result)
             } catch (error: IOException) {
@@ -113,7 +118,11 @@ class StationCatalog internal constructor(private val file: File) {
             val metadataUrl = if (builtIn != null && savedMetadataUrl == previousDefaultMetadata[id]) {
                 builtIn.infoDataUrl
             } else savedMetadataUrl
-            validatedStation(id, fields.string("name"), url, fields.string("image"), metadataUrl, builtIn)
+            val enabled = fields["enabled"]?.let { field ->
+                require(field is JsonPrimitive)
+                field.booleanOrNull ?: throw IllegalArgumentException("Invalid station state.")
+            } ?: true
+            validatedStation(id, fields.string("name"), url, fields.string("image"), metadataUrl, builtIn, enabled)
         }
         val ids = stations.map(Station::id).toSet()
         require(stations.isNotEmpty() && ids.size == stations.size)
@@ -128,6 +137,7 @@ class StationCatalog internal constructor(private val file: File) {
                 put("url", station.url)
                 put("image", station.image)
                 put("infoDataUrl", station.infoDataUrl)
+                if (!station.enabled) put("enabled", false)
             }
         }).toString()
 
@@ -183,7 +193,8 @@ private fun validatedStation(
     url: String,
     image: String,
     infoDataUrl: String,
-    builtIn: Station?
+    builtIn: Station?,
+    enabled: Boolean
 ): Station {
     val trimmedName = name.trim()
     require(trimmedName.isNotEmpty()) { "Enter a station name." }
@@ -199,7 +210,8 @@ private fun validatedStation(
         image = if (builtIn != null && imageUrl == previousDefaultArtwork[id]) builtIn.image else imageUrl,
         logo = builtIn?.logo ?: 0,
         infoDataUrl = metadataUrl,
-        metadataFormat = builtIn?.metadataFormat ?: MetadataFormat.PLAIN_TEXT.takeIf { metadataUrl.isNotEmpty() }
+        metadataFormat = builtIn?.metadataFormat ?: MetadataFormat.PLAIN_TEXT.takeIf { metadataUrl.isNotEmpty() },
+        enabled = if (builtIn != null) enabled else true
     )
 }
 

@@ -81,6 +81,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun RadioScreen(
     stations: List<Station>,
+    allStations: List<Station>,
     playback: PlaybackUiState,
     editor: StationEditorState,
     musicBrainzEnabled: Boolean,
@@ -93,7 +94,7 @@ internal fun RadioScreen(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onStop: () -> Unit,
-    saveStation: suspend (String?, String, String, String, String) -> Result<Station>,
+    saveStation: suspend (String?, String, String, String, String, Boolean) -> Result<Station>,
     moveStation: suspend (String, Int) -> Result<Boolean>
 ) {
     var editMode by rememberSaveable { mutableStateOf(false) }
@@ -105,6 +106,7 @@ internal fun RadioScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val selectedIndex = stations.indexOfFirst { it.id == playback.stationId }
+    val visibleStations = if (editMode) allStations else stations
     BackHandler(enabled = settingsOpen || editMode) {
         if (settingsOpen) settingsOpen = false else editMode = false
     }
@@ -218,24 +220,26 @@ internal fun RadioScreen(
                 Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
             }
         }
-        LazyColumn(
-            Modifier.weight(1f),
-            state = listState,
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            itemsIndexed(stations, key = { _, station -> station.id }) { index, station ->
-                val selected = playback.stationId == station.id
-                StationRow(
-                    station = station,
-                    isSelected = selected,
-                    onAir = selected && playback.playing,
-                    enabled = playback.connected,
-                    onPlay = { onPlayStation(station) },
-                    onEdit = if (editMode) ({ editingId = station.id }) else null,
-                    onMoveUp = if (editMode && !moving && index > 0) ({ move(index, station.id, -1) }) else null,
-                    onMoveDown = if (editMode && !moving && index < stations.lastIndex) ({ move(index, station.id, 1) }) else null
-                )
+        key(editMode) {
+            LazyColumn(
+                Modifier.weight(1f),
+                state = listState,
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                itemsIndexed(visibleStations, key = { _, station -> station.id }) { index, station ->
+                    val selected = playback.stationId == station.id
+                    StationRow(
+                        station = station,
+                        isSelected = selected,
+                        onAir = selected && playback.playing,
+                        enabled = playback.connected && station.enabled,
+                        onPlay = { onPlayStation(station) },
+                        onEdit = if (editMode) ({ editingId = station.id }) else null,
+                        onMoveUp = if (editMode && !moving && index > 0) ({ move(index, station.id, -1) }) else null,
+                        onMoveDown = if (editMode && !moving && index < visibleStations.lastIndex) ({ move(index, station.id, 1) }) else null
+                    )
+                }
             }
         }
         val station = stations.getOrNull(selectedIndex) ?: stations.firstOrNull()
@@ -259,7 +263,7 @@ internal fun RadioScreen(
         )
     }
 
-    val editingStation = stations.firstOrNull { it.id == editingId }
+    val editingStation = allStations.firstOrNull { it.id == editingId }
     if (adding || editingStation != null) {
         key(editingId) {
             StationEditor(
@@ -329,6 +333,9 @@ private fun StationRow(
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
         )
+        if (!station.enabled && onEdit != null) {
+            Text(stringResource(R.string.station_disabled), style = MaterialTheme.typography.labelMedium)
+        }
         if (onAir && onEdit == null) {
             Text(
                 stringResource(R.string.station_on_air),

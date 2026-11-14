@@ -55,7 +55,13 @@ internal class MusicBrainzLookup(
                 if (result["recordings"] !is JsonArray) return@withLock song.also { trace("search response has no recordings") }
                 var selected = SearchMatches(result, exactMatches(result, title, artist))
                 if (selected.matches.isEmpty()) {
+                    selected = findLeadingArticle(result, title, artist) ?: selected
+                }
+                if (selected.matches.isEmpty()) {
                     selected = findTitleVariant(song.title, artistName) ?: selected
+                }
+                if (selected.matches.isEmpty()) {
+                    selected = findMissingApostrophe(song.title, artistName) ?: selected
                 }
                 if (selected.matches.isEmpty()) {
                     selected = findArtistAlias(song.title, artistName) ?: selected
@@ -112,6 +118,46 @@ internal class MusicBrainzLookup(
             ) return@mapNotNull null
             recording to SongInfo(recordedTitle, recordedArtist)
         }
+
+    private fun findLeadingArticle(result: JsonObject, title: String, artist: String): SearchMatches? {
+        val matches = (result["recordings"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { recording ->
+            val recordedTitle = recording.stringOrNull("title")?.usableSongText() ?: return@mapNotNull null
+            val recordedArtist = recording.creditedArtist().usableSongText() ?: return@mapNotNull null
+            val creditedName = recordedArtist.artistSearchText().normalizedSongText()
+            if (recordedTitle.normalizedSongText() != title ||
+                !creditedName.startsWith("the ") || creditedName.removePrefix("the ") != artist
+            ) return@mapNotNull null
+            recording to SongInfo(recordedTitle, recordedArtist)
+        }
+        if (matches.isEmpty()) return null
+        trace("leading article matches=${matches.size}")
+        return SearchMatches(result, matches, relaxedSpelling = true)
+    }
+
+    private suspend fun findMissingApostrophe(title: String, artist: String): SearchMatches? {
+        val corrected = missingApostrophePattern.replace(title) { match ->
+            val replacement = contractions[match.value.lowercase(Locale.ROOT)] ?: match.value
+            when {
+                match.value == match.value.uppercase(Locale.ROOT) -> replacement.uppercase(Locale.ROOT)
+                match.value.first().isUpperCase() -> replacement.replaceFirstChar { it.uppercase(Locale.ROOT) }
+                else -> replacement
+            }
+        }
+        if (corrected == title) return null
+        val result = findRecordings(corrected, artist) ?: return null
+        val titleKey = title.normalizedSongText().replace(" ", "")
+        val artistKey = artist.artistSearchText().normalizedSongText()
+        val matches = (result["recordings"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { recording ->
+            val recordedTitle = recording.stringOrNull("title")?.usableSongText() ?: return@mapNotNull null
+            val recordedArtist = recording.creditedArtist().usableSongText() ?: return@mapNotNull null
+            if (recordedTitle.normalizedSongText().replace(" ", "") != titleKey ||
+                recordedArtist.artistSearchText().normalizedSongText() != artistKey
+            ) return@mapNotNull null
+            recording to SongInfo(recordedTitle, recordedArtist)
+        }
+        trace("apostrophe search title=${corrected.take(120)} matches=${matches.size}")
+        return SearchMatches(result, matches, relaxedSpelling = true)
+    }
 
     private suspend fun findTitleVariant(title: String, artist: String): SearchMatches? {
         val feature = featuredSuffix.find(title) ?: return null
@@ -212,9 +258,33 @@ internal class MusicBrainzLookup(
         lastSearchAt = System.nanoTime()
     }
 
-    private fun coverUrls(recordings: List<JsonObject>): List<String> = recordings
-        .flatMap { (it["releases"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>() }
-        .sortedBy { release ->
+    private fun coverUrls(recordings: List<JsonObject>): List<String> {
+        var skipped = 0
+        val releases = recordings.flatMap { recording ->
+            val credits = (recording["artist-credit"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+            val artistIds = credits.mapNotNull { (it["artist"] as? JsonObject)?.stringOrNull("id") }.toSet()
+            val artistNames = credits.mapNotNull {
+                it.stringOrNull("name") ?: (it["artist"] as? JsonObject)?.stringOrNull("name")
+            }.map { it.normalizedSongText() }.toSet()
+            (recording["releases"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { release ->
+                val releaseCredits = (release["artist-credit"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+                val belongsToArtist = releaseCredits.any { credit ->
+                    val artist = credit["artist"] as? JsonObject
+                    val artistId = artist?.stringOrNull("id")
+                    if (artistId != null && artistIds.isNotEmpty()) artistId in artistIds
+                    else (credit.stringOrNull("name") ?: artist?.stringOrNull("name"))
+                        ?.normalizedSongText() in artistNames
+                }
+                if (releaseCredits.isNotEmpty() && !belongsToArtist) {
+                    skipped++
+                    null
+                } else {
+                    release to belongsToArtist
+                }
+            }
+        }
+        if (skipped > 0) trace("cover releases skipped=$skipped: different release artist")
+        return releases.sortedWith(compareBy<Pair<JsonObject, Boolean>> { !it.second }.thenBy { (release) ->
             val group = release["release-group"] as? JsonObject
             when {
                 release.stringOrNull("status") == "Bootleg" -> 2
@@ -222,11 +292,12 @@ internal class MusicBrainzLookup(
                     (group["secondary-types"] as? JsonArray).isNullOrEmpty() -> 0
                 else -> 1
             }
-        }
-        .mapNotNull { it.stringOrNull("id")?.takeIf(releaseId::matches) }
-        .distinct()
-        .take(5)
-        .map { "https://coverartarchive.org/release/$it/front-250" }
+        })
+            .mapNotNull { (release) -> release.stringOrNull("id")?.takeIf(releaseId::matches) }
+            .distinct()
+            .take(5)
+            .map { "https://coverartarchive.org/release/$it/front-250" }
+    }
 
     private fun JsonObject.creditedArtist(): String =
         (get("artist-credit") as? JsonArray).orEmpty()
@@ -252,6 +323,15 @@ internal class MusicBrainzLookup(
         val spanishAnd = Regex("\\s+[yY]\\s+")
         val featuredSuffix = Regex("\\s*\\((?:feat\\.?|ft\\.?|featuring)\\s+([^()]+)\\)\\s*$", RegexOption.IGNORE_CASE)
         val featureJoin = Regex("(?:feat\\.?|ft\\.?|featuring)", RegexOption.IGNORE_CASE)
+        val contractions = mapOf(
+            "youre" to "you're", "youve" to "you've", "dont" to "don't",
+            "cant" to "can't", "wont" to "won't", "im" to "i'm",
+            "ive" to "i've", "theyre" to "they're", "weve" to "we've",
+            "didnt" to "didn't", "doesnt" to "doesn't", "isnt" to "isn't",
+            "arent" to "aren't", "wasnt" to "wasn't", "werent" to "weren't",
+            "couldnt" to "couldn't", "wouldnt" to "wouldn't", "shouldnt" to "shouldn't"
+        )
+        val missingApostrophePattern = Regex("\\b(?:${contractions.keys.joinToString("|")})\\b", RegexOption.IGNORE_CASE)
     }
 }
 

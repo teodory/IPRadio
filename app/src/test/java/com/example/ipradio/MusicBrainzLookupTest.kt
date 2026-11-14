@@ -235,6 +235,73 @@ class MusicBrainzLookupTest {
     }
 
     @Test
+    fun matchesArtistCreditedWithLeadingThe() = runBlocking {
+        val stationCover = "https://example.org/station.jpg"
+        val song = SongInfo("SHOULD I STAY OR SHOULD I GO", "CLASH", stationCover)
+        val lookup = MusicBrainzLookup(search = { url ->
+            if (url.contains("/artist/")) """{"count":0,"artists":[]}"""
+            else """{"count":3,"recordings":[
+                {"title":"Should I Stay or Should I Go","artist-credit":[{"name":"The Clash"}]},
+                {"title":"Should I Stay or Should I Go","artist-credit":[{"name":"The Clash"}]},
+                {"title":"Should I Stay or Should I Go","artist-credit":[{"name":"The Clashers"}]}
+            ]}"""
+        }, hasCover = { error("The radio supplied artwork") })
+
+        assertEquals(song.copy(title = "Should I Stay or Should I Go", artist = "The Clash"), lookup.enrich(song))
+    }
+
+    @Test
+    fun doesNotMatchANameThatOnlyStartsWithTheExpectedArtist() = runBlocking {
+        val song = SongInfo("ONE SONG", "CLASH")
+        val lookup = MusicBrainzLookup(search = { url ->
+            if (url.contains("/artist/")) """{"count":0,"artists":[]}"""
+            else """{"count":1,"recordings":[
+                {"title":"One Song","artist-credit":[{"name":"The Clashers"}],
+                 "releases":[{"id":"11111111-1111-1111-1111-111111111111"}]}
+            ]}"""
+        }, hasCover = { error("Unrelated artwork must not be checked") })
+
+        assertEquals(song, lookup.enrich(song))
+    }
+
+    @Test
+    fun findsTitleWhenRadioOmitsAnApostrophe() = runBlocking {
+        val cover = "https://coverartarchive.org/release/11111111-1111-1111-1111-111111111111/front-250"
+        val lookup = MusicBrainzLookup(search = { url ->
+            val query = URLDecoder.decode(url, "UTF-8")
+            if (query.contains("recording:\"CALL ME WHEN YOU'RE SOBER\"")) {
+                """{"count":3,"recordings":[
+                    {"title":"Call Me When You’re Sober","artist-credit":[{"name":"Evanescence"}],
+                     "releases":[{"id":"11111111-1111-1111-1111-111111111111"}]},
+                    {"title":"Call Me When You’re Sober","artist-credit":[{"name":"Evanescence"}]},
+                    {"title":"Call Me When Your Sober","artist-credit":[{"name":"Evanescence"}]}
+                ]}"""
+            } else if (url.contains("/artist/")) """{"count":0,"artists":[]}"""
+            else """{"count":0,"recordings":[]}"""
+        }, hasCover = { true })
+
+        assertEquals(SongInfo("Call Me When You’re Sober", "Evanescence", cover),
+            lookup.enrich(SongInfo("CALL ME WHEN YOURE SOBER", "EVANESCENCE")))
+    }
+
+    @Test
+    fun doesNotUseAContractionHitFromAnotherArtistOrTitle() = runBlocking {
+        val song = SongInfo("CALL ME WHEN YOURE SOBER", "EVANESCENCE")
+        val lookup = MusicBrainzLookup(search = { url ->
+            val query = URLDecoder.decode(url, "UTF-8")
+            if (query.contains("recording:\"CALL ME WHEN YOU'RE SOBER\"")) {
+                """{"count":2,"recordings":[
+                    {"title":"Call Me When You’re Sober","artist-credit":[{"name":"Another Artist"}]},
+                    {"title":"Call Me When Your Sober","artist-credit":[{"name":"Evanescence"}]}
+                ]}"""
+            } else if (url.contains("/artist/")) """{"count":0,"artists":[]}"""
+            else """{"count":0,"recordings":[]}"""
+        })
+
+        assertEquals(song, lookup.enrich(song))
+    }
+
+    @Test
     fun reusesTheSameRecordingSearchForEmbeddedArtAndMissingArt() = runBlocking {
         val coverUrl = "https://coverartarchive.org/release/11111111-1111-1111-1111-111111111111/front-250"
         val song = SongInfo("BACK IN BLACK", "AC/DC", artworkData = byteArrayOf(1))
@@ -274,5 +341,55 @@ class MusicBrainzLookupTest {
 
         assertEquals("https://coverartarchive.org/release/33333333-3333-3333-3333-333333333333/front-250",
             lookup.enrich(SongInfo("One Song", "The Artist")).artworkUrl)
+    }
+
+    @Test
+    fun prefersAnArtistReleaseOverAnEarlierVariousArtistsCompilation() = runBlocking {
+        val artistCover = "https://coverartarchive.org/release/22222222-2222-2222-2222-222222222222/front-250"
+        val lookup = MusicBrainzLookup(search = {
+            """{"count":1,"recordings":[{
+                "title":"Beautiful","artist-credit":[{"name":"Christina Aguilera",
+                    "artist":{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}}],
+                "releases":[
+                    {"id":"11111111-1111-1111-1111-111111111111",
+                     "artist-credit":[{"name":"Various Artists","artist":{"id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}}],
+                     "release-group":{"primary-type":"Album","secondary-types":["Compilation"]}},
+                    {"id":"22222222-2222-2222-2222-222222222222",
+                     "artist-credit":[{"name":"Christina Aguilera","artist":{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}}],
+                     "release-group":{"primary-type":"Single","secondary-types":[]}}
+                ]
+            }]}"""
+        }, hasCover = { true })
+
+        assertEquals(artistCover, lookup.enrich(SongInfo("Beautiful", "Christina Aguilera")).artworkUrl)
+    }
+
+    @Test
+    fun doesNotBorrowArtworkFromAnUnrelatedReleaseArtist() = runBlocking {
+        val lookup = MusicBrainzLookup(search = {
+            """{"count":1,"recordings":[{
+                "title":"One Song","artist-credit":[{"name":"The Artist"}],
+                "releases":[{"id":"11111111-1111-1111-1111-111111111111",
+                    "artist-credit":[{"name":"Various Artists"}],
+                    "release-group":{"primary-type":"Album","secondary-types":["Compilation"]}}]
+            }]}"""
+        }, hasCover = { error("Unrelated release art must not be checked") })
+
+        assertEquals(SongInfo("One Song", "The Artist"), lookup.enrich(SongInfo("One Song", "The Artist")))
+    }
+
+    @Test
+    fun acceptsAReleaseCreditedToOneCollaboratingArtist() = runBlocking {
+        val cover = "https://coverartarchive.org/release/33333333-3333-3333-3333-333333333333/front-250"
+        val lookup = MusicBrainzLookup(search = {
+            """{"count":1,"recordings":[{"title":"Together","artist-credit":[
+                {"name":"Artist One","joinphrase":" & ","artist":{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}},
+                {"name":"Artist Two","artist":{"id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}}],
+                "releases":[{"id":"33333333-3333-3333-3333-333333333333",
+                    "artist-credit":[{"name":"Artist Two","artist":{"id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}}]}]
+            }]}"""
+        }, hasCover = { true })
+
+        assertEquals(cover, lookup.enrich(SongInfo("Together", "Artist One & Artist Two")).artworkUrl)
     }
 }

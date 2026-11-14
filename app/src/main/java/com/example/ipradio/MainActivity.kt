@@ -127,7 +127,6 @@ class MainActivity : ComponentActivity() {
     private fun handleVoiceIntent(intent: Intent?) {
         if (intent?.action != MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) return
         pendingVoiceSearch = intent.getStringExtra(SearchManager.QUERY).orEmpty()
-        VoiceDiagnostics.record(this, "search_intent search=$pendingVoiceSearch")
         playPendingVoiceSearch()
     }
 

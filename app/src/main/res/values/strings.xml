@@ -13,6 +13,8 @@
     <string name="edit_radio">Edit %1$s</string>
     <string name="station_enabled">Enabled</string>
     <string name="station_disabled">Disabled</string>
+    <string name="station_gain">Station volume</string>
+    <string name="station_gain_value">%1$s dB</string>
     <string name="move_station_up">Move %1$s up</string>
     <string name="move_station_down">Move %1$s down</string>
     <string name="station_order_error">Couldn’t save the station order.</string>

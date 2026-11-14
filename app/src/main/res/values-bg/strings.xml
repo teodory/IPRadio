@@ -13,6 +13,8 @@
     <string name="edit_radio">Редактирай %1$s</string>
     <string name="station_enabled">Активна станция</string>
     <string name="station_disabled">Изключена</string>
+    <string name="station_gain">Сила на звука на станцията</string>
+    <string name="station_gain_value">%1$s dB</string>
     <string name="move_station_up">Премести %1$s нагоре</string>
     <string name="move_station_down">Премести %1$s надолу</string>
     <string name="station_order_error">Редът на станциите не можа да се запази.</string>

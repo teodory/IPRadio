@@ -1,5 +1,7 @@
 package com.example.ipradio
 
+import kotlin.math.pow
+
 data class Station(
     val id: String,
     val name: String,
@@ -8,10 +10,14 @@ data class Station(
     val logo: Int = 0,
     val infoDataUrl: String = "",
     val metadataFormat: MetadataFormat? = null,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    val gainDb: Int = 0
 )
 
 enum class MetadataFormat { ZROCK, METACAST, MAGIC, FLUMOTION, PLAIN_TEXT }
+
+internal fun playerVolumeForGain(gainDb: Int): Float =
+    if (gainDb >= 0) 1f else 10.0.pow(gainDb / 20.0).toFloat()
 
 internal const val RADIO_ANTENA_STREAM_URL = "https://live.radioantena.bg/RadioAntena"
 private const val ZROCK_STREAM_URL = "https://web.static.btv.bg/radio/zrock-radio-proxy/"

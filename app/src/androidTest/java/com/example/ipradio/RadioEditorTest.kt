@@ -15,6 +15,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import org.junit.Assert.assertEquals
@@ -51,6 +53,31 @@ class RadioEditorTest {
     }
 
     @Test
+    fun editorSavesAndRestoresStationVolume() {
+        val catalog = StationCatalog.getInstance(compose.activity)
+        val original = catalog.allStations.value.first { it.id == "zrock" }
+        try {
+            enterEditMode()
+            compose.onNodeWithContentDescription(compose.activity.getString(R.string.edit_radio, original.name))
+                .performClick()
+            compose.onNodeWithContentDescription(compose.activity.getString(R.string.station_gain))
+                .performSemanticsAction(SemanticsActions.SetProgress) { it(6f) }
+            compose.onNodeWithText("Save").performClick()
+            compose.waitUntil(5_000) {
+                catalog.allStations.value.first { it.id == original.id }.gainDb == 6
+            }
+            compose.onNodeWithContentDescription(compose.activity.getString(R.string.edit_radio, original.name))
+                .performClick()
+            compose.onNodeWithText("+6 dB").assertIsDisplayed()
+        } finally {
+            runBlocking {
+                catalog.save(original.id, original.name, original.url, original.image,
+                    original.infoDataUrl, original.enabled, original.gainDb).getOrThrow()
+            }
+        }
+    }
+
+    @Test
     fun fullScreenSettingsOpensStationEditing() {
         val settings = compose.onNodeWithContentDescription("Settings")
         val stations = compose.onNodeWithText("Stations")
@@ -78,7 +105,8 @@ class RadioEditorTest {
         val enabledLabel = compose.activity.getString(R.string.station_enabled)
         val disabledLabel = compose.activity.getString(R.string.station_disabled)
         runBlocking {
-            catalog.save(original.id, original.name, original.url, original.image, original.infoDataUrl, true).getOrThrow()
+            catalog.save(original.id, original.name, original.url, original.image,
+                original.infoDataUrl, true, original.gainDb).getOrThrow()
         }
 
         try {
@@ -88,7 +116,7 @@ class RadioEditorTest {
             compose.onNodeWithText("Save").performClick()
             compose.waitUntil(5_000) { catalog.stations.value.none { it.id == original.id } }
             compose.waitUntil(5_000) { compose.onAllNodes(hasText("Edit Radio")).fetchSemanticsNodes().isEmpty() }
-            compose.onNodeWithText(disabledLabel).assertIsDisplayed()
+            compose.onNode(hasText(original.name) and hasText(disabledLabel)).assertIsDisplayed()
 
             compose.onNodeWithContentDescription(compose.activity.getString(R.string.done_editing_stations)).performClick()
             compose.waitUntil(5_000) {
@@ -109,7 +137,8 @@ class RadioEditorTest {
             compose.onNode(hasText(original.name) and hasClickAction()).assertIsDisplayed()
         } finally {
             runBlocking {
-                catalog.save(original.id, original.name, original.url, original.image, original.infoDataUrl, original.enabled)
+                catalog.save(original.id, original.name, original.url, original.image,
+                    original.infoDataUrl, original.enabled, original.gainDb)
                     .getOrThrow()
             }
         }

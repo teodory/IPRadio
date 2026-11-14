@@ -9,9 +9,11 @@ import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
 import android.os.Bundle
 import android.os.Process
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.core.app.NotificationCompat
 import androidx.media.utils.MediaConstants
@@ -26,6 +28,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.metadata.icy.IcyInfo
 import androidx.media3.session.LibraryResult
@@ -50,6 +53,9 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaLibrarySession
     private lateinit var songManager: SongManager
+    private var loudnessEnhancer: LoudnessEnhancer? = null
+    private var enhancerSessionId = C.AUDIO_SESSION_ID_UNSET
+    private var failedEnhancerSessionId = C.AUDIO_SESSION_ID_UNSET
     private var handlingServiceStart = false
     private var rejectedServiceStart = false
     private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { preferences, key ->
@@ -60,6 +66,7 @@ class PlaybackService : MediaLibraryService() {
 
     private val playbackListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
+            applyStationGain()
             val station = player.preparedStation()
             if (player.playWhenReady && station != null &&
                 radioPreferences.getString(LAST_PLAYED_STATION_ID, null) != station.id
@@ -91,6 +98,14 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    private val audioSessionListener = object : AnalyticsListener {
+        override fun onAudioSessionIdChanged(eventTime: AnalyticsListener.EventTime, audioSessionId: Int) {
+            releaseEnhancer()
+            failedEnhancerSessionId = C.AUDIO_SESSION_ID_UNSET
+            applyStationGain()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         VoiceDiagnostics.record(this, "service_created label=${getString(R.string.app_name)}")
@@ -117,6 +132,7 @@ class PlaybackService : MediaLibraryService() {
         radioPreferences.registerOnSharedPreferenceChangeListener(preferenceListener)
         songManager.setMusicBrainzEnabled(radioPreferences.getBoolean(MUSICBRAINZ_ARTWORK_ENABLED, false))
         player.addListener(playbackListener)
+        player.addAnalyticsListener(audioSessionListener)
 
         val stationPlayer = StationPlayer(player, ::skipStation)
         val openApp = PendingIntent.getActivity(
@@ -130,6 +146,7 @@ class PlaybackService : MediaLibraryService() {
         serviceScope.launch {
             catalog.stations.collect { stations ->
                 applyCatalogUpdate(stations)
+                applyStationGain()
                 session.notifyChildrenChanged(ROOT_ID, stations.size, null)
             }
         }
@@ -195,6 +212,8 @@ class PlaybackService : MediaLibraryService() {
         radioPreferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         serviceScope.cancel()
         player.removeListener(playbackListener)
+        player.removeAnalyticsListener(audioSessionListener)
+        releaseEnhancer()
         session.release()
         player.release()
         super.onDestroy()
@@ -213,7 +232,8 @@ class PlaybackService : MediaLibraryService() {
         val item = player.currentMediaItem ?: return
         val previous = item.localConfiguration?.tag as? Station ?: return
         val station = stations.firstOrNull { it.id == previous.id }
-        if (station == previous) return
+        // A gain-only edit can take effect without replacing the live stream.
+        if (station?.copy(gainDb = previous.gainDb) == previous) return
         if (station == null) {
             player.pause()
             player.stop()
@@ -235,6 +255,43 @@ class PlaybackService : MediaLibraryService() {
             player.replaceMediaItem(0, station.mediaItem(playableSource = true, song = song))
             songManager.setStation(player.preparedStation(), poll = player.playWhenReady)
         }
+    }
+
+    private fun applyStationGain() {
+        val gainDb = catalog.stations.value.firstOrNull {
+            it.id == player.currentMediaItem?.mediaId
+        }?.gainDb ?: 0
+        val volume = playerVolumeForGain(gainDb)
+        if (player.volume != volume) player.volume = volume
+
+        val sessionId = player.audioSessionId
+        if (gainDb <= 0 || sessionId == C.AUDIO_SESSION_ID_UNSET || sessionId == 0) {
+            releaseEnhancer()
+            return
+        }
+        if (enhancerSessionId != sessionId) releaseEnhancer()
+        if (failedEnhancerSessionId == sessionId) return
+
+        try {
+            if (loudnessEnhancer == null) {
+                loudnessEnhancer = LoudnessEnhancer(sessionId)
+                enhancerSessionId = sessionId
+            }
+            loudnessEnhancer?.apply {
+                setTargetGain(gainDb * 100)
+                enabled = true
+            }
+        } catch (error: RuntimeException) {
+            releaseEnhancer()
+            failedEnhancerSessionId = sessionId
+            Log.w("PlaybackService", "Could not boost station audio", error)
+        }
+    }
+
+    private fun releaseEnhancer() {
+        loudnessEnhancer?.release()
+        loudnessEnhancer = null
+        enhancerSessionId = C.AUDIO_SESSION_ID_UNSET
     }
 
     private fun Player.preparedStation(): Station? {

@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -34,6 +35,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
@@ -47,6 +50,7 @@ import androidx.media3.session.SessionToken
 import com.example.ipradio.ui.theme.IPRadioTheme
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -235,13 +239,15 @@ internal fun StationEditor(
     station: Station?,
     editor: StationEditorState,
     onDismiss: () -> Unit,
-    saveStation: suspend (String?, String, String, String, String, Boolean) -> Result<Station>
+    saveStation: suspend (String?, String, String, String, String, Boolean, Int) -> Result<Station>
 ) {
     var name by rememberSaveable { mutableStateOf(station?.name.orEmpty()) }
     var url by rememberSaveable { mutableStateOf(station?.url.orEmpty()) }
     var image by rememberSaveable { mutableStateOf(station?.image.orEmpty()) }
     var infoUrl by rememberSaveable { mutableStateOf(station?.infoDataUrl.orEmpty()) }
     var enabled by rememberSaveable { mutableStateOf(station?.enabled ?: true) }
+    var gainDb by rememberSaveable { mutableStateOf(station?.gainDb ?: 0) }
+    val gainDescription = stringResource(R.string.station_gain)
     val saving = editor.saving
     val error = editor.result?.exceptionOrNull()
     LaunchedEffect(editor.result) {
@@ -257,6 +263,21 @@ internal fun StationEditor(
                 TextField(url, { url = it }, enabled = !saving, label = { Text("URL") }, singleLine = true)
                 TextField(image, { image = it }, enabled = !saving, label = { Text("Image URL") }, singleLine = true)
                 TextField(infoUrl, { infoUrl = it }, enabled = !saving, label = { Text("Info URL") }, singleLine = true)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.station_gain), Modifier.weight(1f))
+                    Text(stringResource(R.string.station_gain_value,
+                        if (gainDb > 0) "+$gainDb" else gainDb.toString()))
+                }
+                Slider(
+                    value = gainDb.toFloat(),
+                    onValueChange = { gainDb = it.roundToInt() },
+                    modifier = Modifier.fillMaxWidth().semantics {
+                        contentDescription = gainDescription
+                    },
+                    enabled = !saving,
+                    valueRange = -12f..12f,
+                    steps = 23
+                )
                 if (station?.id in defaultStationsById) {
                     Row(
                         Modifier.fillMaxWidth().toggleable(
@@ -277,7 +298,7 @@ internal fun StationEditor(
         confirmButton = {
             Button(
                 enabled = !saving,
-                onClick = { editor.save(station?.id, name, url, image, infoUrl, enabled, saveStation) }
+                onClick = { editor.save(station?.id, name, url, image, infoUrl, enabled, gainDb, saveStation) }
             ) {
                 Text(if (station == null) "Add" else "Save")
             }
@@ -301,13 +322,14 @@ internal class StationEditorState : ViewModel() {
         image: String,
         infoUrl: String,
         enabled: Boolean,
-        saveStation: suspend (String?, String, String, String, String, Boolean) -> Result<Station>
+        gainDb: Int,
+        saveStation: suspend (String?, String, String, String, String, Boolean, Int) -> Result<Station>
     ) {
         if (saving) return
         saving = true
         result = null
         viewModelScope.launch {
-            result = saveStation(id, name, url, image, infoUrl, enabled)
+            result = saveStation(id, name, url, image, infoUrl, enabled, gainDb)
             saving = false
         }
     }

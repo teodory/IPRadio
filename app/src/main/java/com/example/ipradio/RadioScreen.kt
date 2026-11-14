@@ -94,7 +94,7 @@ internal fun RadioScreen(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onStop: () -> Unit,
-    saveStation: suspend (String?, String, String, String, String, Boolean) -> Result<Station>,
+    saveStation: suspend (String?, String, String, String, String, Boolean, Int) -> Result<Station>,
     moveStation: suspend (String, Int) -> Result<Boolean>
 ) {
     var editMode by rememberSaveable { mutableStateOf(false) }

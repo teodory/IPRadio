@@ -23,7 +23,7 @@ class StationCatalogTest {
         assertEquals(
             listOf("ZRock", "1Rock", "Darik", "FM+", "Magic FM", "Tangra Mega Rock",
                 "RockFM", "Cadena100", "SoftRockRadio.net", "Melody", "Радио Антена", "bTV Radio",
-                "Radio 1", "Radio ENERGY", "Radio Paradise Rock Mix", "FluxFM", "Radio Swiss Pop"),
+                "Radio 1", "Radio ENERGY", "Radio Paradise", "FluxFM", "Radio Swiss Pop"),
             stations.map { it.name }
         )
         assertEquals(stations.size, stations.map { it.id }.toSet().size)
@@ -194,6 +194,17 @@ class StationCatalogTest {
         val customStream = "https://example.org/my-rock.m3u8"
         file.writeText(savedStation.replace(oldStream, customStream))
         assertEquals(customStream, StationCatalog(file).stations.value.first().url)
+    }
+
+    @Test
+    fun updatesOnlyThePreviousDefaultRadioParadiseName() {
+        val file = storeFile()
+        val savedStation = """[{"id":"radio-paradise-rock","name":"Radio Paradise Rock Mix","url":"https://stream.radioparadise.com/rock-128","image":"","infoDataUrl":""}]"""
+        file.writeText(savedStation)
+        assertEquals("Radio Paradise", StationCatalog(file).stations.value.first().name)
+
+        file.writeText(savedStation.replace("Radio Paradise Rock Mix", "My Rock Radio"))
+        assertEquals("My Rock Radio", StationCatalog(file).stations.value.first().name)
     }
 
     @Test

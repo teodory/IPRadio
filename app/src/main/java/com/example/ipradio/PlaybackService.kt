@@ -301,7 +301,7 @@ class PlaybackService : MediaLibraryService() {
         val stationTitle = if (playableSource) "📻 $name" else name
         return MediaMetadata.Builder()
             .setTitle(song?.title ?: name)
-            .setDisplayTitle(song?.artist?.let { "$stationTitle · $it" } ?: stationTitle)
+            .setDisplayTitle(song?.artist?.let { "$stationTitle\n$it" } ?: stationTitle)
             .setSubtitle(song?.title)
             .setArtist(song?.artist)
             .setArtworkUri(artwork)

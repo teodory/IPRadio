@@ -515,7 +515,7 @@ internal fun findStations(stations: List<Station>, query: String): List<Station>
         val rank = when {
             station.name.equals(name, ignoreCase = true) -> 4
             key.isNotEmpty() && station.name.voiceSearchKey() == key -> 3
-            voiceStationAliases[key] == station.id -> 2
+            voiceStationAliases[station.id]?.any { it.voiceSearchKey() == key } == true -> 2
             station.name.contains(name, ignoreCase = true) -> 1
             else -> 0
         }
@@ -524,8 +524,18 @@ internal fun findStations(stations: List<Station>, query: String): List<Station>
 }
 
 private val voiceStationAliases = mapOf(
-    "zirock" to "zrock",
-    "radioantena" to "radio-antena"
+    "zrock" to listOf("Zirock", "Зи Рок", "Зет Рок"),
+    "1rock" to listOf("Radio 1 Rock", "One Rock", "Радио 1 Рок", "Радио Едно Рок"),
+    "darik" to listOf("Darik Radio", "Radio Darik", "Радио Дарик", "Дарик"),
+    "fmplus" to listOf("FM Plus Radio", "ФМ Плюс", "Радио ФМ Плюс"),
+    "magic-fm" to listOf("Magic Radio", "Меджик ФМ", "Радио Меджик"),
+    "tangra-mega-rock" to listOf("Radio Tangra", "Тангра Мега Рок", "Радио Тангра"),
+    "rockfm" to listOf("Рок ФМ", "Радио Рок ФМ"),
+    "cadena100" to listOf("Cadena Cien", "Кадена сто", "Радио Кадена 100"),
+    "soft-rock-radio" to listOf("Soft Rock Radio", "Soft Rock", "Софт Рок Радио"),
+    "melody" to listOf("Radio Melody", "Мелъди", "Радио Мелоди"),
+    "radio-antena" to listOf("Radio Antena", "Antena Radio", "Антена"),
+    "btv-radio" to listOf("БТВ Радио", "Би Ти Ви Радио", "Радио БТВ")
 )
 
 private fun String.voiceSearchKey(): String = lowercase(Locale.ROOT)

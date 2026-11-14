@@ -1,14 +1,17 @@
 package com.example.ipradio
 
+import android.app.SearchManager
 import android.content.ComponentName
 import android.content.Intent
 import android.media.MediaMetadata
 import android.media.browse.MediaBrowser
 import android.media.session.MediaController
 import android.media.session.PlaybackState
+import android.provider.MediaStore
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
@@ -20,6 +23,59 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LegacyPlaybackTest {
+    @Test
+    fun voiceDiagnosticsRetainsRecentEventsWithinSizeLimit() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val trace = File(context.getExternalFilesDir(null), "voice-diagnostics.log")
+        trace.delete()
+
+        repeat(250) { index ->
+            VoiceDiagnostics.record(context, "entry=$index ${"x".repeat(280)}")
+        }
+
+        assertTrue("Voice diagnostics must stay below 64 KiB", trace.length() <= 64 * 1024)
+        val contents = trace.readText()
+        assertTrue("The newest event must be retained", contents.contains("entry=249 "))
+        assertFalse("Old events must be discarded", contents.contains("entry=0 "))
+    }
+
+    @Test
+    fun voiceSearchWritesPersistentDiagnostics() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val trace = File(context.getExternalFilesDir(null), "voice-diagnostics.log")
+        trace.delete()
+
+        withLegacyController { controller, stationIds ->
+            instrumentation.runOnMainSync {
+                controller.transportControls.playFromSearch("Magic FM", null)
+            }
+            assertTrue("Voice search should select Magic FM", awaitStation(stationIds, "magic-fm"))
+        }
+
+        assertTrue("Voice diagnostics should survive the Activity", trace.isFile)
+        assertTrue(trace.readText().contains("search=Magic FM"))
+    }
+
+    @Test
+    fun mediaSearchIntentPlaysNamedStation() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val voiceIntent = Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
+            .addCategory(Intent.CATEGORY_DEFAULT)
+            .setPackage(context.packageName)
+            .putExtra(SearchManager.QUERY, "Magic FM")
+        assertTrue(
+            "The voice search intent must resolve to IPRadio",
+            context.packageManager.queryIntentActivities(voiceIntent, 0).isNotEmpty()
+        )
+
+        withLegacyController(voiceIntent) { controller, stationIds ->
+            val currentId = controller.metadata?.getString(MediaMetadata.METADATA_KEY_MEDIA_ID)
+            assertTrue("Voice search should play Magic FM",
+                currentId == "magic-fm" || awaitStation(stationIds, "magic-fm"))
+        }
+    }
+
     @Test
     fun nextAndPlayFromSearchWorkBeforeBrowsing() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -57,6 +113,7 @@ class LegacyPlaybackTest {
     }
 
     private fun <T> withLegacyController(
+        launchIntent: Intent? = null,
         test: (MediaController, LinkedBlockingQueue<String>) -> T
     ): T {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -70,7 +127,7 @@ class LegacyPlaybackTest {
             }
         }
 
-        return ActivityScenario.launch(MainActivity::class.java).use {
+        return ActivityScenario.launch<MainActivity>(launchIntent ?: Intent(context, MainActivity::class.java)).use {
             instrumentation.runOnMainSync {
                 browser = MediaBrowser(
                     context,

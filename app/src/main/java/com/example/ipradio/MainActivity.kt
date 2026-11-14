@@ -1,8 +1,11 @@
 package com.example.ipradio
 
+import android.app.SearchManager
 import android.content.ComponentName
 import android.content.ContentResolver
+import android.content.Intent
 import android.os.Bundle
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.StringRes
@@ -41,6 +44,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
+    private var pendingVoiceSearch: String? = null
     private var playback by mutableStateOf(PlaybackUiState())
     private var musicBrainzEnabled by mutableStateOf(false)
     private var bigPlayerEnabled by mutableStateOf(false)
@@ -62,6 +66,7 @@ class MainActivity : ComponentActivity() {
         } else {
             null
         }
+        handleVoiceIntent(intent)
         connectPlayer()
 
         setContent {
@@ -100,6 +105,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleVoiceIntent(intent)
+    }
+
+    private fun handleVoiceIntent(intent: Intent?) {
+        if (intent?.action != MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) return
+        pendingVoiceSearch = intent.getStringExtra(SearchManager.QUERY).orEmpty()
+        VoiceDiagnostics.record(this, "search_intent search=$pendingVoiceSearch")
+        playPendingVoiceSearch()
+    }
+
+    private fun playPendingVoiceSearch() {
+        val player = controller ?: return
+        val query = pendingVoiceSearch ?: return
+        pendingVoiceSearch = null
+        player.setMediaItem(
+            MediaItem.Builder().setRequestMetadata(
+                MediaItem.RequestMetadata.Builder().setSearchQuery(query).build()
+            ).build()
+        )
+        player.prepare()
+        player.play()
+    }
+
     private fun connectPlayer() {
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
         val future = MediaController.Builder(this, token)
@@ -120,6 +151,7 @@ class MainActivity : ComponentActivity() {
                         controller = player
                         player.addListener(playbackListener)
                         showPlayback(player)
+                        playPendingVoiceSearch()
                     }
                     .onFailure { playback = PlaybackUiState(connectionError = true) }
             }

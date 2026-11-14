@@ -92,6 +92,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        VoiceDiagnostics.record(this, "service_created")
         catalog = StationCatalog.getInstance(this)
         val dataSourceFactory = ResolvingDataSource.Factory(DefaultDataSource.Factory(this)) { request ->
             // Radio Antena rejects stream requests without its website as the Referer.
@@ -133,11 +134,15 @@ class PlaybackService : MediaLibraryService() {
         // Media3 supplies an anonymous placeholder before asking the legacy browser to connect.
         // Only the binding path needs that placeholder; notification intents already target a session.
         if (controllerInfo.uid < 0) {
-            if (!handlingServiceStart) return session
+            val allowed = !handlingServiceStart
+            VoiceDiagnostics.record(this, "session_request package=${controllerInfo.packageName} uid=${controllerInfo.uid} allowed=$allowed")
+            if (allowed) return session
             rejectedServiceStart = true
             return null
         }
-        return session.takeIf { isTrustedController(controllerInfo) }
+        val allowed = isTrustedController(controllerInfo)
+        VoiceDiagnostics.record(this, "session_request package=${controllerInfo.packageName} uid=${controllerInfo.uid} allowed=$allowed")
+        return session.takeIf { allowed }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -181,6 +186,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        VoiceDiagnostics.record(this, "service_destroyed")
         radioPreferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         serviceScope.cancel()
         player.removeListener(playbackListener)
@@ -192,6 +198,7 @@ class PlaybackService : MediaLibraryService() {
     private fun skipStation(offset: Int) {
         val station = adjacentStation(catalog.stations.value, player.currentMediaItem?.mediaId, offset)
             ?: return
+        VoiceDiagnostics.record(this, "skip offset=$offset result=${station.id}")
         player.setMediaItem(station.mediaItem(playableSource = true))
         player.prepare()
         player.play()
@@ -317,7 +324,9 @@ class PlaybackService : MediaLibraryService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
-            if (!isTrustedController(controller)) return MediaSession.ConnectionResult.reject()
+            val allowed = isTrustedController(controller)
+            VoiceDiagnostics.record(this@PlaybackService, "controller_connect package=${controller.packageName} uid=${controller.uid} allowed=$allowed")
+            if (!allowed) return MediaSession.ConnectionResult.reject()
             val commands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
                 .remove(Player.COMMAND_CHANGE_MEDIA_ITEMS)
                 .remove(Player.COMMAND_SET_REPEAT_MODE)
@@ -348,7 +357,10 @@ class PlaybackService : MediaLibraryService() {
             startPositionMs: Long
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             val request = mediaItems.singleOrNull()
-                ?: return Futures.immediateFailedFuture(IllegalArgumentException("Select one station"))
+                ?: run {
+                    VoiceDiagnostics.record(this@PlaybackService, "set_media_items package=${controller.packageName} count=${mediaItems.size} rejected")
+                    return Futures.immediateFailedFuture(IllegalArgumentException("Select one station"))
+                }
             val stations = catalog.stations.value
             val query = request.requestMetadata.searchQuery
             val station = when {
@@ -357,7 +369,10 @@ class PlaybackService : MediaLibraryService() {
                 query.isBlank() -> stations.firstOrNull { it.id == player.currentMediaItem?.mediaId }
                     ?: stations.firstOrNull()
                 else -> findStations(stations, query).firstOrNull()
-            } ?: return Futures.immediateFailedFuture(IllegalArgumentException("Unknown station"))
+            }
+            VoiceDiagnostics.record(this@PlaybackService,
+                "set_media_items package=${controller.packageName} search=${query.orEmpty()} media_id=${request.mediaId} result=${station?.id ?: "none"}")
+            if (station == null) return Futures.immediateFailedFuture(IllegalArgumentException("Unknown station"))
             return Futures.immediateFuture(playbackSelection(station))
         }
 
@@ -369,6 +384,7 @@ class PlaybackService : MediaLibraryService() {
             val lastStationId = radioPreferences.getString(LAST_PLAYED_STATION_ID, null)
             val station = stations.firstOrNull { it.id == lastStationId } ?: stations.firstOrNull()
                 ?: return Futures.immediateFailedFuture(IllegalStateException("No stations available"))
+            VoiceDiagnostics.record(this@PlaybackService, "playback_resumption package=${controller.packageName} result=${station.id}")
             return Futures.immediateFuture(playbackSelection(station))
         }
 
@@ -381,6 +397,7 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<MediaItem>> {
+            VoiceDiagnostics.record(this@PlaybackService, "browser_root package=${browser.packageName}")
             val extras = Bundle().apply {
                 putBoolean(MediaConstants.BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED, true)
                 putInt(
@@ -427,7 +444,9 @@ class PlaybackService : MediaLibraryService() {
             query: String,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<Void>> {
-            session.notifySearchResultChanged(browser, query, findStations(catalog.stations.value, query).size, params)
+            val count = findStations(catalog.stations.value, query).size
+            VoiceDiagnostics.record(this@PlaybackService, "browser_search package=${browser.packageName} search=$query results=$count")
+            session.notifySearchResultChanged(browser, query, count, params)
             return Futures.immediateFuture(LibraryResult.ofVoid())
         }
 
@@ -438,8 +457,12 @@ class PlaybackService : MediaLibraryService() {
             page: Int,
             pageSize: Int,
             params: LibraryParams?
-        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
-            stationPage(findStations(catalog.stations.value, query), page, pageSize, params)
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            val matches = findStations(catalog.stations.value, query)
+            VoiceDiagnostics.record(this@PlaybackService,
+                "browser_search_results package=${browser.packageName} search=$query results=${matches.size} page=$page")
+            return stationPage(matches, page, pageSize, params)
+        }
 
         private fun stationPage(
             stations: List<Station>,

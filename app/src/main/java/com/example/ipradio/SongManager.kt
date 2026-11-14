@@ -13,6 +13,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.TimeUnit
 
 internal class SongManager(
     private val scope: CoroutineScope,
@@ -39,6 +40,9 @@ internal class SongManager(
     private var streamSongChangedSinceStationSong = false
     private var songWithoutLookup: SongInfo? = null
     private var musicBrainzEnabled = false
+    private var lastStationEnteredAtMs: Long? = null
+    private var lastRapidStationSwitchAtMs: Long? = null
+    private var lastLookupStartedAtMs: Long? = null
     var currentSong: SongInfo? = null
         private set
 
@@ -49,6 +53,13 @@ internal class SongManager(
             Source(it.id, it.url, it.songDataUrl, it.metadataFormat)
         }
         if (source != nextSource) {
+            if (nextSource != null && source?.stationId != nextSource.stationId) {
+                val now = nowMs()
+                if (lastStationEnteredAtMs?.let { now - it < 3_000L } == true) {
+                    lastRapidStationSwitchAtMs = now
+                }
+                lastStationEnteredAtMs = now
+            }
             trace("source ${source?.stationId} -> ${nextSource?.stationId} format=${nextSource?.format} url=${nextSource?.infoUrl}")
             val sameStream = nextSource != null && source?.stationId == nextSource.stationId &&
                 source?.streamUrl == nextSource.streamUrl
@@ -145,12 +156,19 @@ internal class SongManager(
             return
         }
 
+        val now = nowMs()
+        val recentLookup = lastLookupStartedAtMs?.let { now - it < 3_000L } == true
+        val rapidStationSwitch = lastRapidStationSwitchAtMs?.let { now - it < 3_000L } == true
+        val waitingForStationMetadata = source?.format != null && source?.infoUrl?.isNotBlank() == true &&
+            !stationSongAvailable
+        val waitMs = if (recentLookup || rapidStationSwitch || waitingForStationMetadata) 1_000L else 0L
         lookupJob = scope.launch {
-            trace("lookup waiting station=$stationId 1000ms")
-            delay(1_000L)
+            trace("lookup scheduled station=$stationId wait=${waitMs}ms")
+            if (waitMs > 0) delay(waitMs)
             var retryDelayMs = 2_000L
             while (isActive) {
                 trace("lookup start station=$stationId song=${song.displayTitle.take(120)}")
+                lastLookupStartedAtMs = nowMs()
                 val enriched = try {
                     enrichSong(song)
                 } catch (error: IOException) {
@@ -189,6 +207,8 @@ internal class SongManager(
         publish(stationId, song)
     }
 
+    private fun nowMs(): Long = TimeUnit.NANOSECONDS.toMillis(System.nanoTime())
+
     private companion object {
         val pollDelaysMs = listOf(10_000L, 30_000L, 60_000L, 10_000L, 30_000L, 60_000L, 30_000L, 10_000L)
     }
@@ -196,6 +216,8 @@ internal class SongManager(
 
 private const val REQUEST_TIMEOUT_MS = 5_000
 private const val MAX_BODY_BYTES = 64 * 1024
+
+internal class MetadataHttpException(val status: Int, url: String) : IOException("HTTP $status from $url")
 
 internal suspend fun fetchMetadata(
     url: String,
@@ -215,7 +237,7 @@ internal suspend fun fetchMetadata(
         val status = connection.responseCode
         if (status !in 200..299 || connection.contentLength > maxBodyBytes) {
             trace("GET $url HTTP $status contentLength=${connection.contentLength} rejected")
-            if (status == 429 || status in 500..599) throw IOException("HTTP $status from $url")
+            if (status == 429 || status in 500..599) throw MetadataHttpException(status, url)
             return null
         }
         val context = currentCoroutineContext()

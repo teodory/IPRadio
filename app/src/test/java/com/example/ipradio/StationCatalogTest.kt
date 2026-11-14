@@ -52,6 +52,34 @@ class StationCatalogTest {
     }
 
     @Test
+    fun stationGainIsIndependentAndSurvivesReload() = runBlocking {
+        val file = storeFile()
+        val catalog = StationCatalog(file)
+        val quiet = catalog.stations.value.first()
+        val other = catalog.stations.value[1]
+
+        catalog.save(quiet.id, quiet.name, quiet.url, quiet.image, quiet.infoDataUrl,
+            quiet.enabled, 6).getOrThrow()
+
+        val reloaded = StationCatalog(file).stations.value
+        assertEquals(6, reloaded.first { it.id == quiet.id }.gainDb)
+        assertEquals(0, reloaded.first { it.id == other.id }.gainDb)
+    }
+
+    @Test
+    fun oldCatalogDefaultsGainToZeroAndRejectsOutOfRangeGain() = runBlocking {
+        val file = storeFile()
+        file.writeText("""[{"id":"zrock","name":"ZRock","url":"https://example.org/rock","image":"","infoDataUrl":""}]""")
+        val catalog = StationCatalog(file)
+        val original = catalog.stations.value.first()
+
+        assertEquals(0, original.gainDb)
+        assertTrue(catalog.save(original.id, original.name, original.url, original.image,
+            original.infoDataUrl, original.enabled, 13).isFailure)
+        assertEquals(original, catalog.stations.value.first())
+    }
+
+    @Test
     fun concurrentAddsKeepBothStationsAndAssignDistinctIds() = runBlocking {
         val file = storeFile()
         val catalog = StationCatalog(file)

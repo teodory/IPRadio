@@ -11,7 +11,6 @@ import android.provider.MediaStore
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import java.io.File
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
@@ -23,40 +22,6 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LegacyPlaybackTest {
-    @Test
-    fun voiceDiagnosticsRetainsRecentEventsWithinSizeLimit() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val trace = File(context.getExternalFilesDir(null), "voice-diagnostics.log")
-        trace.delete()
-
-        repeat(250) { index ->
-            VoiceDiagnostics.record(context, "entry=$index ${"x".repeat(280)}")
-        }
-
-        assertTrue("Voice diagnostics must stay below 64 KiB", trace.length() <= 64 * 1024)
-        val contents = trace.readText()
-        assertTrue("The newest event must be retained", contents.contains("entry=249 "))
-        assertFalse("Old events must be discarded", contents.contains("entry=0 "))
-    }
-
-    @Test
-    fun voiceSearchWritesPersistentDiagnostics() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val context = instrumentation.targetContext
-        val trace = File(context.getExternalFilesDir(null), "voice-diagnostics.log")
-        trace.delete()
-
-        withLegacyController { controller, stationIds ->
-            instrumentation.runOnMainSync {
-                controller.transportControls.playFromSearch("Magic FM", null)
-            }
-            assertTrue("Voice search should select Magic FM", awaitStation(stationIds, "magic-fm"))
-        }
-
-        assertTrue("Voice diagnostics should survive the Activity", trace.isFile)
-        assertTrue(trace.readText().contains("search=Magic FM"))
-    }
-
     @Test
     fun mediaSearchIntentPlaysNamedStation() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

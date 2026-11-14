@@ -151,6 +151,37 @@ class StationCatalogTest {
     }
 
     @Test
+    fun disabledBuiltInIsExcludedFromPlayableStations() {
+        val file = storeFile()
+        file.writeText("""[{"id":"zrock","name":"ZRock","url":"https://example.org/rock","image":"","infoDataUrl":"","enabled":false}]""")
+
+        val stations = StationCatalog(file).stations.value
+
+        assertEquals(defaultStations.size - 1, stations.size)
+        assertTrue(stations.none { it.id == "zrock" })
+        assertTrue(stations.any { it.id == "1rock" })
+    }
+
+    @Test
+    fun disabledBuiltInCanBeRestoredAfterReload() = runBlocking {
+        val file = storeFile()
+        val catalog = StationCatalog(file)
+        val original = catalog.stations.value.first { it.id == "zrock" }
+
+        catalog.save(original.id, original.name, original.url, original.image, original.infoDataUrl, false).getOrThrow()
+        assertTrue(catalog.stations.value.none { it.id == original.id })
+        assertEquals(false, catalog.allStations.value.first { it.id == original.id }.enabled)
+
+        val reloaded = StationCatalog(file)
+        val disabled = reloaded.allStations.value.first { it.id == original.id }
+        assertTrue(reloaded.stations.value.none { it.id == original.id })
+        assertEquals(false, disabled.enabled)
+
+        reloaded.save(disabled.id, disabled.name, disabled.url, disabled.image, disabled.infoDataUrl, true).getOrThrow()
+        assertEquals(original, StationCatalog(file).stations.value.first { it.id == original.id })
+    }
+
+    @Test
     fun updatesOnlyTheRetiredRockFmStream() {
         val file = storeFile()
         val oldStream = "https://rockfm-cope.flumotion.com/chunks.m3u8"

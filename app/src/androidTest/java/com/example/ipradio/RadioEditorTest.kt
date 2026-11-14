@@ -5,18 +5,23 @@ import android.graphics.Color
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertTrue
+import kotlinx.coroutines.runBlocking
 
 class RadioEditorTest {
     @get:Rule
@@ -63,6 +68,51 @@ class RadioEditorTest {
         add.assertDoesNotExist()
         compose.onNodeWithContentDescription("Edit stations").assertDoesNotExist()
         settings.assertIsDisplayed()
+    }
+
+    @Test
+    fun disabledBuiltInStaysEditableButLeavesTheStationList() {
+        val catalog = StationCatalog.getInstance(compose.activity)
+        val original = catalog.allStations.value.first { it.id == "zrock" }
+        val editLabel = compose.activity.getString(R.string.edit_radio, original.name)
+        val enabledLabel = compose.activity.getString(R.string.station_enabled)
+        val disabledLabel = compose.activity.getString(R.string.station_disabled)
+        runBlocking {
+            catalog.save(original.id, original.name, original.url, original.image, original.infoDataUrl, true).getOrThrow()
+        }
+
+        try {
+            enterEditMode()
+            compose.onNodeWithContentDescription(editLabel).performClick()
+            compose.onNodeWithText(enabledLabel).assertIsOn().performClick()
+            compose.onNodeWithText("Save").performClick()
+            compose.waitUntil(5_000) { catalog.stations.value.none { it.id == original.id } }
+            compose.waitUntil(5_000) { compose.onAllNodes(hasText("Edit Radio")).fetchSemanticsNodes().isEmpty() }
+            compose.onNodeWithText(disabledLabel).assertIsDisplayed()
+
+            compose.onNodeWithContentDescription(compose.activity.getString(R.string.done_editing_stations)).performClick()
+            compose.waitUntil(5_000) {
+                compose.onAllNodes(hasContentDescription(compose.activity.getString(R.string.done_editing_stations)))
+                    .fetchSemanticsNodes().isEmpty()
+            }
+            compose.onNode(hasText(original.name) and hasClickAction()).assertDoesNotExist()
+
+            compose.onNodeWithContentDescription(compose.activity.getString(R.string.settings)).performClick()
+            compose.onNodeWithText(compose.activity.getString(R.string.edit_stations)).performClick()
+            compose.onNode(hasScrollAction()).performScrollToIndex(0)
+            compose.onNodeWithContentDescription(editLabel).performClick()
+            compose.onNodeWithText(enabledLabel).assertIsOff().performClick()
+            compose.onNodeWithText("Save").performClick()
+            compose.waitUntil(5_000) { catalog.stations.value.any { it.id == original.id } }
+            compose.waitUntil(5_000) { compose.onAllNodes(hasText("Edit Radio")).fetchSemanticsNodes().isEmpty() }
+            compose.onNodeWithContentDescription(compose.activity.getString(R.string.done_editing_stations)).performClick()
+            compose.onNode(hasText(original.name) and hasClickAction()).assertIsDisplayed()
+        } finally {
+            runBlocking {
+                catalog.save(original.id, original.name, original.url, original.image, original.infoDataUrl, original.enabled)
+                    .getOrThrow()
+            }
+        }
     }
 
     @Test

@@ -26,7 +26,13 @@ class VoiceStationSearchTest {
             "radio-energy" to listOf("Energy", "NRJ", "Радио Енерджи", "Ен Ар Джей"),
             "radio-paradise-rock" to listOf("Paradise Rock", "Radio Paradise Rock", "Радио Парадайз Рок", "Радио Парадайс Рок"),
             "fluxfm" to listOf("Flux FM", "Радио Флукс", "Флукс ФМ", "Флакс ФМ"),
-            "radio-swiss-pop" to listOf("Swiss Pop", "Радио Суис Поп", "Радио Свис Поп", "Швейцарско Поп Радио")
+            "radio-swiss-pop" to listOf("Swiss Pop", "Радио Суис Поп", "Радио Свис Поп", "Швейцарско Поп Радио"),
+            "choice-classic-rock" to listOf("Choice Rock", "Чойс Класик Рок", "Чойс Рок"),
+            "radio-paradise-main" to listOf("Paradise Main", "Radio Paradise Main", "Радио Парадайз Мейн"),
+            "muzaica-radio" to listOf("Muzaica", "Мюзайка", "Радио Мюзайка"),
+            "rainbow-89" to listOf("Rainbow", "Rainbow Radio", "Рейнбоу", "Рейнбоу 89"),
+            "rainbow-alternative" to listOf("Rainbow Alt", "Рейнбоу Алтернатив"),
+            "rainbow-pop" to listOf("Рейнбоу Поп", "Rainbow Pop Radio")
         )
         assertEquals(stations.map { it.id }.toSet(), spokenNames.keys)
         spokenNames.forEach { (stationId, queries) ->
@@ -52,5 +58,10 @@ class VoiceStationSearchTest {
     fun normalizedNameSearchAlsoWorksForCustomStations() {
         val customStation = Station("custom", "My Cool Radio", "https://example.org/custom")
         assertEquals("custom", findStations(stations + customStation, "MyCoolRadio").first().id)
+    }
+
+    @Test
+    fun androidAutoStationLabelCanBeSearched() {
+        assertEquals("rainbow-89", findStations(stations, "89 Rainbow (GR)").firstOrNull()?.id)
     }
 }

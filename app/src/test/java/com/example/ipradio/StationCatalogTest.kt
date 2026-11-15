@@ -18,16 +18,41 @@ class StationCatalogTest {
     val directory = TemporaryFolder()
 
     @Test
+    fun stationNamesUseFlagsOnPhoneAndCountryCodesInCar() {
+        val station = defaultStations.first { it.id == "rainbow-89" }
+        assertEquals("89 Rainbow 🇬🇷", station.displayName())
+        assertEquals("89 Rainbow (GR)", station.displayName(forAndroidAuto = true))
+    }
+
+    @Test
     fun seedsAllStationsInPlaybackOrder() {
         val stations = StationCatalog(storeFile()).stations.value
         assertEquals(
             listOf("ZRock", "1Rock", "Darik", "FM+", "Magic FM", "Tangra Mega Rock",
                 "RockFM", "Cadena100", "SoftRockRadio.net", "Melody", "Радио Антена", "bTV Radio",
-                "Radio 1", "Radio ENERGY", "Radio Paradise", "FluxFM", "Radio Swiss Pop"),
+                "Radio 1", "Radio ENERGY", "Radio Paradise Rock Mix", "FluxFM", "Radio Swiss Pop",
+                "Choice Classic Rock", "Radio Paradise Main Mix", "Muzaica Radio",
+                "89 Rainbow", "Rainbow Alternative", "Rainbow Pop"),
             stations.map { it.name }
         )
         assertEquals(stations.size, stations.map { it.id }.toSet().size)
         assertEquals(stations, StationCatalog(storeFile()).stations.value)
+    }
+
+    @Test
+    fun savedCatalogGainsTheSixNewStationsWithoutChangingExistingEdits() {
+        val file = storeFile()
+        file.writeText("""[{"id":"zrock","name":"My Rock","url":"https://example.org/rock","image":"","infoDataUrl":""}]""")
+
+        val stations = StationCatalog(file).allStations.value
+
+        assertEquals("My Rock", stations.first().name)
+        assertEquals(
+            setOf("choice-classic-rock", "radio-paradise-main", "muzaica-radio",
+                "rainbow-89", "rainbow-alternative", "rainbow-pop"),
+            stations.takeLast(6).map { it.id }.toSet()
+        )
+        assertTrue(stations.all { it.countryCode != null })
     }
 
     @Test
@@ -111,6 +136,20 @@ class StationCatalogTest {
         assertEquals(initial.dropLast(2) + listOf(custom, initial[initial.lastIndex - 1]), reloaded)
         assertEquals(reloaded, catalog.stations.value)
         assertEquals(custom, adjacentStation(reloaded, reloaded[reloaded.lastIndex - 2].id, 1))
+    }
+
+    @Test
+    fun draggingAcrossSeveralStationsPersistsTheFinalOrder() = runBlocking {
+        val file = storeFile()
+        val catalog = StationCatalog(file)
+        val initial = catalog.allStations.value
+        val dragged = initial[1]
+
+        assertTrue(catalog.move(dragged.id, 5).getOrThrow())
+
+        val expected = initial.toMutableList().apply { add(6, removeAt(1)) }
+        assertEquals(expected, catalog.allStations.value)
+        assertEquals(expected, StationCatalog(file).allStations.value)
     }
 
     @Test
@@ -210,6 +249,59 @@ class StationCatalogTest {
     }
 
     @Test
+    fun togglingBuiltInAndCustomStationsKeepsSectionsAndPersistsTheirOrder() = runBlocking {
+        val file = storeFile()
+        val catalog = StationCatalog(file)
+        val first = catalog.allStations.value.first()
+        val custom = catalog.save(null, "Custom", "https://example.org/live", "", "").getOrThrow()
+
+        assertTrue(catalog.setEnabled(first.id, false).getOrThrow())
+        assertEquals(first.id, catalog.allStations.value.last().id)
+        assertEquals(false, catalog.allStations.value.last().enabled)
+        assertTrue(catalog.setEnabled(custom.id, false).getOrThrow())
+        assertEquals(listOf(first.id, custom.id), catalog.allStations.value.takeLast(2).map { it.id })
+
+        assertTrue(catalog.setEnabled(first.id, true).getOrThrow())
+        assertEquals(first.id, catalog.stations.value.last().id)
+        assertEquals(custom.id, catalog.allStations.value.last().id)
+        assertEquals(catalog.allStations.value, StationCatalog(file).allStations.value)
+    }
+
+    @Test
+    fun oldCatalogWithDisabledStationInTheMiddleLoadsInSections() {
+        val file = storeFile()
+        file.writeText("""[{"id":"zrock","name":"ZRock","url":"https://example.org/rock","image":"","infoDataUrl":"","enabled":false}]""")
+
+        val catalog = StationCatalog(file)
+
+        assertEquals("zrock", catalog.allStations.value.last().id)
+        assertTrue(catalog.allStations.value.dropLast(1).all { it.enabled })
+    }
+
+    @Test
+    fun draggingCannotCrossTheEnabledBoundary() = runBlocking {
+        val catalog = StationCatalog(storeFile())
+        val first = catalog.allStations.value.first()
+        catalog.setEnabled(first.id, false).getOrThrow()
+        val before = catalog.allStations.value
+
+        assertEquals(false, catalog.move(before[before.lastIndex - 1].id, 1).getOrThrow())
+        assertEquals(false, catalog.move(first.id, -1).getOrThrow())
+        assertEquals(before, catalog.allStations.value)
+    }
+
+    @Test
+    fun failedToggleKeepsTheCurrentStateAndOrder() = runBlocking {
+        val parent = directory.newFolder()
+        val catalog = StationCatalog(File(parent, "stations.json"))
+        val before = catalog.allStations.value
+        assertTrue(parent.delete())
+
+        assertTrue(catalog.setEnabled(before.first().id, false).isFailure)
+        assertEquals(before, catalog.allStations.value)
+    }
+
+    @Test
     fun updatesOnlyTheRetiredRockFmStream() {
         val file = storeFile()
         val oldStream = "https://rockfm-cope.flumotion.com/chunks.m3u8"
@@ -227,11 +319,11 @@ class StationCatalogTest {
     @Test
     fun updatesOnlyThePreviousDefaultRadioParadiseName() {
         val file = storeFile()
-        val savedStation = """[{"id":"radio-paradise-rock","name":"Radio Paradise Rock Mix","url":"https://stream.radioparadise.com/rock-128","image":"","infoDataUrl":""}]"""
+        val savedStation = """[{"id":"radio-paradise-rock","name":"Radio Paradise","url":"https://stream.radioparadise.com/rock-128","image":"","infoDataUrl":""}]"""
         file.writeText(savedStation)
-        assertEquals("Radio Paradise", StationCatalog(file).stations.value.first().name)
+        assertEquals("Radio Paradise Rock Mix", StationCatalog(file).stations.value.first().name)
 
-        file.writeText(savedStation.replace("Radio Paradise Rock Mix", "My Rock Radio"))
+        file.writeText(savedStation.replace("Radio Paradise", "My Rock Radio"))
         assertEquals("My Rock Radio", StationCatalog(file).stations.value.first().name)
     }
 

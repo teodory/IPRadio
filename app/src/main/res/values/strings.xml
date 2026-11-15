@@ -13,10 +13,14 @@
     <string name="edit_radio">Edit %1$s</string>
     <string name="station_enabled">Enabled</string>
     <string name="station_disabled">Disabled</string>
+    <string name="disable_station">Disable %1$s</string>
+    <string name="enable_station">Enable %1$s</string>
+    <string name="station_availability_error">Couldn’t update the station.</string>
     <string name="station_gain">Station volume</string>
     <string name="station_gain_value">%1$s dB</string>
     <string name="move_station_up">Move %1$s up</string>
     <string name="move_station_down">Move %1$s down</string>
+    <string name="drag_station">Drag %1$s</string>
     <string name="station_order_error">Couldn’t save the station order.</string>
     <string name="station_on_air">On air</string>
     <string name="player_choose_station">Choose a station</string>

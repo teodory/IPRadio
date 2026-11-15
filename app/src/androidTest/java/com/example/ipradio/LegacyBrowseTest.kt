@@ -54,6 +54,10 @@ class LegacyBrowseTest {
                 "Legacy browser timed out"
             }.getOrThrow()
             assertTrue(stations.any { it.mediaId == "zrock" && it.isPlayable })
+            assertTrue(stations.map { it.mediaId }.containsAll(listOf(
+                "choice-classic-rock", "radio-paradise-main", "muzaica-radio",
+                "rainbow-89", "rainbow-alternative", "rainbow-pop"
+            )))
             assertTrue(stations.map { it.mediaId }.distinct().size == stations.size)
             assertTrue(stations.all {
                 it.description.iconUri?.scheme in listOf("android.resource", "content") &&
@@ -62,6 +66,10 @@ class LegacyBrowseTest {
             assertEquals(
                 "android.resource://com.example.ipradio/drawable/station_fluxfm",
                 stations.single { it.mediaId == "fluxfm" }.description.iconUri.toString()
+            )
+            assertEquals(
+                "89 Rainbow (GR)",
+                stations.single { it.mediaId == "rainbow-89" }.description.title.toString()
             )
         } finally {
             instrumentation.runOnMainSync { browser.disconnect() }

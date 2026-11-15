@@ -11,8 +11,16 @@ data class Station(
     val infoDataUrl: String = "",
     val metadataFormat: MetadataFormat? = null,
     val enabled: Boolean = true,
-    val gainDb: Int = 0
+    val gainDb: Int = 0,
+    val countryCode: String? = null
 )
+
+internal fun Station.displayName(forAndroidAuto: Boolean = false): String {
+    val code = countryCode ?: return name
+    if (forAndroidAuto) return "$name ($code)"
+    val flag = code.map { Character.toChars(0x1F1E6 + it.code - 'A'.code).concatToString() }.joinToString("")
+    return "$name $flag"
+}
 
 enum class MetadataFormat { ZROCK, METACAST, MAGIC, FLUMOTION, PLAIN_TEXT }
 
@@ -29,7 +37,8 @@ internal val defaultStations = listOf(
         ZROCK_STREAM_URL,
         "https://zrock.bg/static/bg/microsites/zrock/img/logo.png",
         logo = R.drawable.station_zrock,
-        metadataFormat = MetadataFormat.ZROCK
+        metadataFormat = MetadataFormat.ZROCK,
+        countryCode = "BG"
     ),
     Station(
         "1rock", "1Rock",
@@ -37,19 +46,22 @@ internal val defaultStations = listOf(
         "https://www.radio1rock.bg/theme_assets/radio1rock/images/logo.png?v=0",
         logo = R.drawable.station_rock1,
         infoDataUrl = "http://meta.metacast.eu/aim/?radio=radio1rock",
-        metadataFormat = MetadataFormat.METACAST
+        metadataFormat = MetadataFormat.METACAST,
+        countryCode = "BG"
     ),
     Station(
         "darik", "Darik",
         "https://a12.asurahosting.com/listen/darik_radio/radio.mp3",
         "https://darikradio.bg/img/logo.new.png",
-        logo = R.drawable.station_darik
+        logo = R.drawable.station_darik,
+        countryCode = "BG"
     ),
     Station(
         "fmplus", "FM+",
         "https://streamer2.atlantis.bg:8443/fmplusnew",
         "https://radiofmplus.bg/i/logo.png",
-        logo = R.drawable.station_fmplus
+        logo = R.drawable.station_fmplus,
+        countryCode = "BG"
     ),
     Station(
         "magic-fm", "Magic FM",
@@ -57,13 +69,15 @@ internal val defaultStations = listOf(
         "https://m.netinfo.bg/media/images/50346/50346532/orig-orig-magic-tv-radio.jpg",
         logo = R.drawable.station_magic,
         infoDataUrl = "https://www.magic.bg/magic/song.php",
-        metadataFormat = MetadataFormat.MAGIC
+        metadataFormat = MetadataFormat.MAGIC,
+        countryCode = "BG"
     ),
     Station(
         "tangra-mega-rock", "Tangra Mega Rock",
         "http://stream-bg-01.radiotangra.com:8000/Tangra-high",
         "https://radiotangra.com/wp-content/uploads/2023/02/Vector-Smart-Object.svg",
-        logo = R.drawable.station_tangra
+        logo = R.drawable.station_tangra,
+        countryCode = "BG"
     ),
     Station(
         "rockfm", "RockFM",
@@ -71,7 +85,8 @@ internal val defaultStations = listOf(
         "https://static.mytuner.mobi/media/tvos_radios/7WH7nKXkwa.png",
         logo = R.drawable.station_rockfm,
         infoDataUrl = "https://bo-cope-webtv.flumotion.com/api/active?format=json&podId=78",
-        metadataFormat = MetadataFormat.FLUMOTION
+        metadataFormat = MetadataFormat.FLUMOTION,
+        countryCode = "ES"
     ),
     Station(
         "cadena100", "Cadena100",
@@ -79,7 +94,8 @@ internal val defaultStations = listOf(
         "https://www.cadena100.es/estaticos/apple-touch-icon-192x192.png",
         logo = R.drawable.station_cadena100,
         infoDataUrl = "https://bo-cope-webtv.flumotion.com/api/active?format=json&podId=76",
-        metadataFormat = MetadataFormat.FLUMOTION
+        metadataFormat = MetadataFormat.FLUMOTION,
+        countryCode = "ES"
     ),
     Station(
         "soft-rock-radio", "SoftRockRadio.net",
@@ -87,25 +103,29 @@ internal val defaultStations = listOf(
         "https://cdn-radiotime-logos.tunein.com/s113401d.png",
         logo = R.drawable.station_softrock,
         infoDataUrl = "https://status.rcast.net/70632",
-        metadataFormat = MetadataFormat.PLAIN_TEXT
+        metadataFormat = MetadataFormat.PLAIN_TEXT,
+        countryCode = "US"
     ),
     Station(
         "melody", "Melody",
         "http://193.108.24.6:8000/melody?file=.mp3",
         "https://radiomelody.bg/i/logo.png",
-        logo = R.drawable.station_melody
+        logo = R.drawable.station_melody,
+        countryCode = "BG"
     ),
     Station(
         "radio-antena", "Радио Антена",
         RADIO_ANTENA_STREAM_URL,
         "https://radioantena.bg/radio-antena-logo.jpg",
-        logo = R.drawable.station_antena
+        logo = R.drawable.station_antena,
+        countryCode = "BG"
     ),
     Station(
         "btv-radio", "bTV Radio",
         "https://cdn.bweb.bg/radio/btv-radio.mp3",
         "https://btvnovinite.bg/static/bg/microsites/btvnovinite/img/logos/btv_radio.png",
-        logo = R.drawable.station_btv_radio
+        logo = R.drawable.station_btv_radio,
+        countryCode = "BG"
     ),
     Station(
         "radio1", "Radio 1",
@@ -113,7 +133,8 @@ internal val defaultStations = listOf(
         "https://media.metacast.eu/pictures/11_2015/k1RAhBlx0YU67dP5uVOc-7898.png",
         logo = R.drawable.station_radio1,
         infoDataUrl = "http://meta.metacast.eu/aim/?radio=radio1",
-        metadataFormat = MetadataFormat.METACAST
+        metadataFormat = MetadataFormat.METACAST,
+        countryCode = "BG"
     ),
     Station(
         "radio-energy", "Radio ENERGY",
@@ -121,25 +142,71 @@ internal val defaultStations = listOf(
         "https://media.metacast.eu/pictures/10_2015/OdriLYWpbHJqKDAcGCMv-7384.png",
         logo = R.drawable.station_energy,
         infoDataUrl = "http://meta.metacast.eu/aim/?radio=radioenergy",
-        metadataFormat = MetadataFormat.METACAST
+        metadataFormat = MetadataFormat.METACAST,
+        countryCode = "BG"
     ),
     Station(
-        "radio-paradise-rock", "Radio Paradise",
+        "radio-paradise-rock", "Radio Paradise Rock Mix",
         "https://stream.radioparadise.com/rock-128",
         "https://radioparadise.com/apple-touch-icon.png",
-        logo = R.drawable.station_paradise_rock
+        logo = R.drawable.station_paradise_rock,
+        countryCode = "US"
     ),
     Station(
         "fluxfm", "FluxFM",
         "https://channels.fluxfm.de/FluxFM/externalembedflxhp/stream.mp3",
         "https://www.fluxfm.de/assets/favicons/android-icon-192x192.png",
-        logo = R.drawable.station_fluxfm
+        logo = R.drawable.station_fluxfm,
+        countryCode = "DE"
     ),
     Station(
         "radio-swiss-pop", "Radio Swiss Pop",
         "https://stream.srg-ssr.ch/srgssr/rsp/aac/192",
         "https://www.radioswisspop.ch/social-media/rsp-web.png",
-        logo = R.drawable.station_swiss_pop
+        logo = R.drawable.station_swiss_pop,
+        countryCode = "CH"
+    ),
+    Station(
+        "choice-classic-rock", "Choice Classic Rock",
+        "https://streamer.radio.co/s66f2626b4/listen",
+        "https://www.choiceclassicrock.com/wp-content/uploads/2020/08/Choice-Classic-Rock-flaming-guitar-300-x-300.jpg",
+        logo = R.drawable.station_choice_classic_rock,
+        countryCode = "CA"
+    ),
+    Station(
+        "radio-paradise-main", "Radio Paradise Main Mix",
+        "https://stream.radioparadise.com/mp3-192",
+        "https://radioparadise.com/apple-touch-icon.png",
+        logo = R.drawable.station_paradise_rock,
+        countryCode = "US"
+    ),
+    Station(
+        "muzaica-radio", "Muzaica Radio",
+        "https://radio.muzaica.fm:9000/stream",
+        "https://muzaica.fm/wp-content/uploads/2025/01/cropped-logo-2.png",
+        logo = R.drawable.station_muzaica,
+        countryCode = "BG"
+    ),
+    Station(
+        "rainbow-89", "89 Rainbow",
+        "https://stream.radiojar.com/083wqknmsuhvv",
+        "https://89rainbow.gr/wp-content/uploads/2022/11/cropped-rainbow89-192x192.webp",
+        logo = R.drawable.station_rainbow,
+        countryCode = "GR"
+    ),
+    Station(
+        "rainbow-alternative", "Rainbow Alternative",
+        "https://stream.radiojar.com/vhknc3c8ktuvv",
+        "https://89rainbow.gr/wp-content/uploads/2023/08/02.jpg",
+        logo = R.drawable.station_rainbow_alternative,
+        countryCode = "GR"
+    ),
+    Station(
+        "rainbow-pop", "Rainbow Pop",
+        "https://stream.radiojar.com/ztqh29c8ktuvv",
+        "https://89rainbow.gr/wp-content/uploads/2023/08/02-Pop-orange.png",
+        logo = R.drawable.station_rainbow_pop,
+        countryCode = "GR"
     )
 )
 

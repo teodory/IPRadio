@@ -56,20 +56,30 @@ class StationCatalog internal constructor(private val file: File) {
             previous?.id ?: UUID.randomUUID().toString(),
             name, url, image, infoDataUrl, defaultStationsById[id], enabled, gainDb
         )
-        val updated = if (previous == null) {
-            current + station
+        val updated = if (previous == null || previous.enabled != station.enabled) {
+            current.insertAtAvailabilityEnd(station)
         } else {
             current.map { if (it.id == station.id) station else it }
         }
         updated to station
     }
 
+    internal suspend fun setEnabled(id: String, enabled: Boolean): Result<Boolean> = updateStations { current ->
+        val station = current.firstOrNull { it.id == id }
+            ?: throw IllegalArgumentException("The station no longer exists.")
+        if (station.enabled == enabled) {
+            current to false
+        } else {
+            current.insertAtAvailabilityEnd(station.copy(enabled = enabled)) to true
+        }
+    }
+
     internal suspend fun move(id: String, offset: Int): Result<Boolean> = updateStations { current ->
-        require(offset == -1 || offset == 1)
+        require(offset != 0)
         val from = current.indexOfFirst { it.id == id }
         require(from >= 0) { "The station no longer exists." }
         val to = from + offset
-        val updated = if (to in current.indices) {
+        val updated = if (to in current.indices && current[to].enabled == current[from].enabled) {
             current.toMutableList().apply { add(to, removeAt(from)) }
         } else {
             current
@@ -133,7 +143,7 @@ class StationCatalog internal constructor(private val file: File) {
         }
         val ids = stations.map(Station::id).toSet()
         require(stations.isNotEmpty() && ids.size == stations.size)
-        return stations + defaultStations.filter { it.id !in ids }
+        return (stations + defaultStations.filter { it.id !in ids }).enabledFirst()
     }
 
     private fun writeStations(stations: List<Station>) {
@@ -175,6 +185,15 @@ class StationCatalog internal constructor(private val file: File) {
     }
 }
 
+private fun List<Station>.enabledFirst(): List<Station> = filter(Station::enabled) + filterNot(Station::enabled)
+
+private fun List<Station>.insertAtAvailabilityEnd(station: Station): List<Station> {
+    val remaining = filterNot { it.id == station.id }
+    val firstDisabled = remaining.indexOfFirst { !it.enabled }
+    val index = if (station.enabled && firstDisabled >= 0) firstDisabled else remaining.size
+    return remaining.toMutableList().apply { add(index, station) }
+}
+
 private fun JsonObject.string(key: String): String {
     val field = this[key]
     require(field is JsonPrimitive && field.isString)
@@ -184,7 +203,7 @@ private fun JsonObject.string(key: String): String {
 private val webSchemes = setOf("http", "https")
 private val streamSchemes = webSchemes + setOf("rtsp", "udp")
 private val previousDefaultNames = mapOf(
-    "radio-paradise-rock" to "Radio Paradise Rock Mix"
+    "radio-paradise-rock" to "Radio Paradise"
 )
 private val previousDefaultStreams = mapOf(
     "rockfm" to "https://rockfm-cope.flumotion.com/chunks.m3u8",
@@ -224,8 +243,9 @@ private fun validatedStation(
         logo = builtIn?.logo ?: 0,
         infoDataUrl = metadataUrl,
         metadataFormat = builtIn?.metadataFormat ?: MetadataFormat.PLAIN_TEXT.takeIf { metadataUrl.isNotEmpty() },
-        enabled = if (builtIn != null) enabled else true,
-        gainDb = gainDb
+        enabled = enabled,
+        gainDb = gainDb,
+        countryCode = builtIn?.countryCode
     )
 }
 

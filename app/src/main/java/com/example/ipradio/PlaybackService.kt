@@ -26,6 +26,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -110,7 +111,12 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         runCatching { getExternalFilesDir(null)?.resolve("voice-diagnostics.log")?.delete() }
         catalog = StationCatalog.getInstance(this)
-        val dataSourceFactory = ResolvingDataSource.Factory(DefaultDataSource.Factory(this)) { request ->
+        // Radiojar redirects Rainbow's HTTPS URLs to HTTP stream hosts.
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+        val dataSourceFactory = ResolvingDataSource.Factory(
+            DefaultDataSource.Factory(this, httpDataSourceFactory)
+        ) { request ->
             // Radio Antena rejects stream requests without its website as the Referer.
             if (request.uri.toString() == RADIO_ANTENA_STREAM_URL) {
                 request.withAdditionalHeaders(mapOf("Referer" to "https://radioantena.bg/"))

@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,6 +59,10 @@ class LegacyBrowseTest {
                 it.description.iconUri?.scheme in listOf("android.resource", "content") &&
                     it.description.mediaUri == null
             })
+            assertEquals(
+                "android.resource://com.example.ipradio/drawable/station_fluxfm",
+                stations.single { it.mediaId == "fluxfm" }.description.iconUri.toString()
+            )
         } finally {
             instrumentation.runOnMainSync { browser.disconnect() }
         }

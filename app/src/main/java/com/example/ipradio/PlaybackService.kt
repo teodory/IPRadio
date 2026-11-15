@@ -356,9 +356,10 @@ class PlaybackService : MediaLibraryService() {
                     .appendPath(resources.getResourceEntryName(resource))
                     .build()
         }
-        val stationTitle = if (playableSource) "📻 $name" else name
+        val stationName = displayName(forAndroidAuto = true)
+        val stationTitle = if (playableSource) "📻 $stationName" else stationName
         return MediaMetadata.Builder()
-            .setTitle(song?.title ?: name)
+            .setTitle(song?.title ?: stationName)
             .setDisplayTitle(song?.artist?.let { "$stationTitle\n$it" } ?: stationTitle)
             .setSubtitle(song?.title)
             .setArtist(song?.artist)
@@ -560,8 +561,10 @@ internal fun findStations(stations: List<Station>, query: String): List<Station>
     val key = name.voiceSearchKey()
     return stations.mapNotNull { station ->
         val rank = when {
-            station.name.equals(name, ignoreCase = true) -> 4
-            key.isNotEmpty() && station.name.voiceSearchKey() == key -> 3
+            station.name.equals(name, ignoreCase = true) ||
+                station.displayName(forAndroidAuto = true).equals(name, ignoreCase = true) -> 4
+            key.isNotEmpty() && (station.name.voiceSearchKey() == key ||
+                station.displayName(forAndroidAuto = true).voiceSearchKey() == key) -> 3
             voiceStationAliases[station.id]?.any { it.voiceSearchKey() == key } == true -> 2
             station.name.contains(name, ignoreCase = true) -> 1
             else -> 0
@@ -587,7 +590,13 @@ private val voiceStationAliases = mapOf(
     "radio-energy" to listOf("Energy", "NRJ", "Радио Енерджи", "Енерджи", "Ен Ар Джей"),
     "radio-paradise-rock" to listOf("Paradise Rock", "Radio Paradise Rock", "Радио Парадайз Рок", "Радио Парадайс Рок"),
     "fluxfm" to listOf("Flux FM", "Радио Флукс", "Флукс ФМ", "Флакс ФМ"),
-    "radio-swiss-pop" to listOf("Swiss Pop", "Радио Суис Поп", "Радио Свис Поп", "Швейцарско Поп Радио")
+    "radio-swiss-pop" to listOf("Swiss Pop", "Радио Суис Поп", "Радио Свис Поп", "Швейцарско Поп Радио"),
+    "choice-classic-rock" to listOf("Choice Rock", "Чойс Класик Рок", "Чойс Рок"),
+    "radio-paradise-main" to listOf("Paradise Main", "Radio Paradise Main", "Радио Парадайз Мейн", "Радио Парадайс Мейн"),
+    "muzaica-radio" to listOf("Muzaica", "Мюзайка", "Радио Мюзайка"),
+    "rainbow-89" to listOf("Rainbow", "Rainbow Radio", "Рейнбоу", "Рейнбоу 89"),
+    "rainbow-alternative" to listOf("Rainbow Alt", "Рейнбоу Алтернатив", "Рейнбоу Алтернативно"),
+    "rainbow-pop" to listOf("Рейнбоу Поп", "Rainbow Pop Radio")
 )
 
 private fun String.voiceSearchKey(): String = lowercase(Locale.ROOT)

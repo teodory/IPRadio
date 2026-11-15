@@ -14,6 +14,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
@@ -98,48 +100,72 @@ class RadioEditorTest {
     }
 
     @Test
-    fun disabledBuiltInStaysEditableButLeavesTheStationList() {
+    fun draggingAStationChangesAndSavesItsPosition() {
+        val catalog = StationCatalog.getInstance(compose.activity)
+        val initial = catalog.allStations.value
+        val station = initial.first()
+        try {
+            enterEditMode()
+            compose.onNodeWithContentDescription("Drag ${station.name}", useUnmergedTree = true).performTouchInput {
+                swipe(center, center.copy(y = center.y + 360f), durationMillis = 700)
+            }
+            compose.waitUntil(5_000) {
+                catalog.allStations.value.indexOfFirst { it.id == station.id } > 0
+            }
+            assertEquals(catalog.allStations.value, StationCatalog(compose.activity.filesDir.resolve("stations.json")).allStations.value)
+        } finally {
+            runBlocking {
+                val index = catalog.allStations.value.indexOfFirst { it.id == station.id }
+                if (index > 0) catalog.move(station.id, -index).getOrThrow()
+            }
+        }
+    }
+
+    @Test
+    fun stationCanBeDisabledAndRestoredFromTheEditList() {
         val catalog = StationCatalog.getInstance(compose.activity)
         val original = catalog.allStations.value.first { it.id == "zrock" }
+        val originalIndex = catalog.allStations.value.indexOfFirst { it.id == original.id }
         val editLabel = compose.activity.getString(R.string.edit_radio, original.name)
+        val stationLabel = original.displayName()
         val enabledLabel = compose.activity.getString(R.string.station_enabled)
         val disabledLabel = compose.activity.getString(R.string.station_disabled)
         runBlocking {
-            catalog.save(original.id, original.name, original.url, original.image,
-                original.infoDataUrl, true, original.gainDb).getOrThrow()
+            catalog.setEnabled(original.id, true).getOrThrow()
         }
 
         try {
             enterEditMode()
             compose.onNodeWithContentDescription(editLabel).performClick()
-            compose.onNodeWithText(enabledLabel).assertIsOn().performClick()
-            compose.onNodeWithText("Save").performClick()
+            compose.onNodeWithText(enabledLabel).assertDoesNotExist()
+            compose.onNodeWithText("Cancel").performClick()
+            compose.onNodeWithContentDescription("Disable ${original.name}").performClick()
             compose.waitUntil(5_000) { catalog.stations.value.none { it.id == original.id } }
-            compose.waitUntil(5_000) { compose.onAllNodes(hasText("Edit Radio")).fetchSemanticsNodes().isEmpty() }
-            compose.onNode(hasText(original.name) and hasText(disabledLabel)).assertIsDisplayed()
+            assertEquals(original.id, catalog.allStations.value.last().id)
+            compose.onNode(hasScrollAction()).performScrollToIndex(catalog.allStations.value.lastIndex)
+            compose.onNode(hasText(stationLabel) and hasText(disabledLabel)).assertIsDisplayed()
 
             compose.onNodeWithContentDescription(compose.activity.getString(R.string.done_editing_stations)).performClick()
             compose.waitUntil(5_000) {
                 compose.onAllNodes(hasContentDescription(compose.activity.getString(R.string.done_editing_stations)))
                     .fetchSemanticsNodes().isEmpty()
             }
-            compose.onNode(hasText(original.name) and hasClickAction()).assertDoesNotExist()
+            compose.onNode(hasText(stationLabel) and hasClickAction()).assertDoesNotExist()
 
             compose.onNodeWithContentDescription(compose.activity.getString(R.string.settings)).performClick()
             compose.onNodeWithText(compose.activity.getString(R.string.edit_stations)).performClick()
-            compose.onNode(hasScrollAction()).performScrollToIndex(0)
-            compose.onNodeWithContentDescription(editLabel).performClick()
-            compose.onNodeWithText(enabledLabel).assertIsOff().performClick()
-            compose.onNodeWithText("Save").performClick()
+            compose.onNode(hasScrollAction()).performScrollToIndex(catalog.allStations.value.lastIndex)
+            compose.onNodeWithContentDescription("Enable ${original.name}").performClick()
             compose.waitUntil(5_000) { catalog.stations.value.any { it.id == original.id } }
-            compose.waitUntil(5_000) { compose.onAllNodes(hasText("Edit Radio")).fetchSemanticsNodes().isEmpty() }
+            assertEquals(original.id, catalog.stations.value.last().id)
             compose.onNodeWithContentDescription(compose.activity.getString(R.string.done_editing_stations)).performClick()
-            compose.onNode(hasText(original.name) and hasClickAction()).assertIsDisplayed()
+            compose.onNode(hasScrollAction()).performScrollToIndex(catalog.stations.value.lastIndex)
+            compose.onNode(hasText(stationLabel) and hasClickAction()).assertExists()
         } finally {
             runBlocking {
-                catalog.save(original.id, original.name, original.url, original.image,
-                    original.infoDataUrl, original.enabled, original.gainDb)
-                    .getOrThrow()
+                catalog.setEnabled(original.id, original.enabled).getOrThrow()
+                val index = catalog.allStations.value.indexOfFirst { it.id == original.id }
+                if (index != originalIndex) catalog.move(original.id, originalIndex - index).getOrThrow()
             }
         }
     }

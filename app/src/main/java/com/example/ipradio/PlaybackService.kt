@@ -349,7 +349,12 @@ class PlaybackService : MediaLibraryService() {
         val resource = logo.takeIf { it != 0 } ?: R.drawable.radio_224dp_sz48
         val artwork = if (song?.artworkData != null) null else {
             (song?.artworkUrl ?: customArtworkUrl?.takeIf { playableSource })?.let(Uri::parse)
-                ?: Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/$resource")
+                ?: Uri.Builder()
+                    .scheme(ContentResolver.SCHEME_ANDROID_RESOURCE)
+                    .authority(packageName)
+                    .appendPath(resources.getResourceTypeName(resource))
+                    .appendPath(resources.getResourceEntryName(resource))
+                    .build()
         }
         val stationTitle = if (playableSource) "📻 $name" else name
         return MediaMetadata.Builder()

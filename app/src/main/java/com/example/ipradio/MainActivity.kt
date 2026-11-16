@@ -248,9 +248,10 @@ internal fun StationEditor(
     station: Station?,
     editor: StationEditorState,
     onDismiss: () -> Unit,
-    saveStation: suspend (String?, String, String, String, String, Boolean, Int) -> Result<Station>
+    saveStation: suspend (String?, String, String, String, String, Boolean, Int, String?) -> Result<Station>
 ) {
     var name by rememberSaveable { mutableStateOf(station?.name.orEmpty()) }
+    var shortName by rememberSaveable { mutableStateOf(station?.shortName.orEmpty()) }
     var url by rememberSaveable { mutableStateOf(station?.url.orEmpty()) }
     var image by rememberSaveable { mutableStateOf(station?.image.orEmpty()) }
     var infoUrl by rememberSaveable { mutableStateOf(station?.infoDataUrl.orEmpty()) }
@@ -275,6 +276,16 @@ internal fun StationEditor(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 StationTextField(name, { name = it }, "Name", !saving)
+                StationTextField(
+                    value = shortName,
+                    onValueChange = { value ->
+                        if (value.codePointCount(0, value.length) <= MAX_STATION_SHORT_NAME_LENGTH) {
+                            shortName = value
+                        }
+                    },
+                    label = stringResource(R.string.station_short_name, MAX_STATION_SHORT_NAME_LENGTH),
+                    enabled = !saving
+                )
                 StationTextField(url, { url = it }, "URL", !saving)
                 StationTextField(image, { image = it }, "Image URL", !saving)
                 StationTextField(infoUrl, { infoUrl = it }, "Info URL", !saving)
@@ -307,7 +318,10 @@ internal fun StationEditor(
         confirmButton = {
             Button(
                 enabled = !saving,
-                onClick = { editor.save(station?.id, name, url, image, infoUrl, station?.enabled ?: true, gainDb, saveStation) }
+                onClick = {
+                    editor.save(station?.id, name, url, image, infoUrl, station?.enabled ?: true,
+                        gainDb, shortName, saveStation)
+                }
             ) {
                 Text(if (station == null) "Add" else "Save")
             }
@@ -365,13 +379,14 @@ internal class StationEditorState : ViewModel() {
         infoUrl: String,
         enabled: Boolean,
         gainDb: Int,
-        saveStation: suspend (String?, String, String, String, String, Boolean, Int) -> Result<Station>
+        shortName: String,
+        saveStation: suspend (String?, String, String, String, String, Boolean, Int, String?) -> Result<Station>
     ) {
         if (saving) return
         saving = true
         result = null
         viewModelScope.launch {
-            result = saveStation(id, name, url, image, infoUrl, enabled, gainDb)
+            result = saveStation(id, name, url, image, infoUrl, enabled, gainDb, shortName)
             saving = false
         }
     }

@@ -12,8 +12,24 @@ data class Station(
     val metadataFormat: MetadataFormat? = null,
     val enabled: Boolean = true,
     val gainDb: Int = 0,
-    val countryCode: String? = null
+    val countryCode: String? = null,
+    val shortName: String = name.toShortStationName()
 )
+
+internal const val MAX_STATION_SHORT_NAME_LENGTH = 16
+
+internal fun String.toShortStationName(): String {
+    val name = lineSequence().joinToString(" ").trim()
+    if (name.codePointCount(0, name.length) <= MAX_STATION_SHORT_NAME_LENGTH) return name
+
+    val end = name.offsetByCodePoints(0, MAX_STATION_SHORT_NAME_LENGTH)
+    val prefix = name.substring(0, end)
+    if (name[end].isWhitespace() || prefix.last().isWhitespace()) return prefix.trimEnd()
+    return prefix.substringBeforeLast(' ', prefix).trimEnd()
+}
+
+internal fun Station.androidAutoPlaybackTitle(artist: String?): String =
+    if (artist.isNullOrBlank()) shortName else "$shortName\n$artist"
 
 internal fun Station.displayName(forAndroidAuto: Boolean = false): String {
     val code = countryCode ?: return name
@@ -77,7 +93,8 @@ internal val defaultStations = listOf(
         "http://stream-bg-01.radiotangra.com:8000/Tangra-high",
         "https://radiotangra.com/wp-content/uploads/2023/02/Vector-Smart-Object.svg",
         logo = R.drawable.station_tangra,
-        countryCode = "BG"
+        countryCode = "BG",
+        shortName = "Tangra Rock"
     ),
     Station(
         "rockfm", "RockFM",
@@ -104,7 +121,8 @@ internal val defaultStations = listOf(
         logo = R.drawable.station_softrock,
         infoDataUrl = "https://status.rcast.net/70632",
         metadataFormat = MetadataFormat.PLAIN_TEXT,
-        countryCode = "US"
+        countryCode = "US",
+        shortName = "Soft Rock Radio"
     ),
     Station(
         "melody", "Melody",
@@ -150,7 +168,8 @@ internal val defaultStations = listOf(
         "https://stream.radioparadise.com/rock-128",
         "https://radioparadise.com/apple-touch-icon.png",
         logo = R.drawable.station_paradise_rock,
-        countryCode = "US"
+        countryCode = "US",
+        shortName = "Paradise Rock"
     ),
     Station(
         "fluxfm", "FluxFM",
@@ -164,21 +183,24 @@ internal val defaultStations = listOf(
         "https://stream.srg-ssr.ch/srgssr/rsp/aac/192",
         "https://www.radioswisspop.ch/social-media/rsp-web.png",
         logo = R.drawable.station_swiss_pop,
-        countryCode = "CH"
+        countryCode = "CH",
+        shortName = "Swiss Pop"
     ),
     Station(
         "choice-classic-rock", "Choice Classic Rock",
         "https://streamer.radio.co/s66f2626b4/listen",
         "https://www.choiceclassicrock.com/wp-content/uploads/2020/08/Choice-Classic-Rock-flaming-guitar-300-x-300.jpg",
         logo = R.drawable.station_choice_classic_rock,
-        countryCode = "CA"
+        countryCode = "CA",
+        shortName = "Choice Rock"
     ),
     Station(
         "radio-paradise-main", "Radio Paradise Main Mix",
         "https://stream.radioparadise.com/mp3-192",
         "https://radioparadise.com/apple-touch-icon.png",
         logo = R.drawable.station_paradise_rock,
-        countryCode = "US"
+        countryCode = "US",
+        shortName = "Paradise Main"
     ),
     Station(
         "muzaica-radio", "Muzaica Radio",
@@ -199,7 +221,8 @@ internal val defaultStations = listOf(
         "https://stream.radiojar.com/vhknc3c8ktuvv",
         "https://89rainbow.gr/wp-content/uploads/2023/08/02.jpg",
         logo = R.drawable.station_rainbow_alternative,
-        countryCode = "GR"
+        countryCode = "GR",
+        shortName = "Rainbow Alt"
     ),
     Station(
         "rainbow-pop", "Rainbow Pop",

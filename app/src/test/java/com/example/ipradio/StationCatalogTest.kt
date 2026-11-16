@@ -25,6 +25,40 @@ class StationCatalogTest {
     }
 
     @Test
+    fun playbackTitleUsesOnlyShortNameAndArtist() {
+        val station = defaultStations.first { it.id == "radio-paradise-rock" }
+
+        assertEquals("Paradise Rock\nDepeche Mode", station.androidAutoPlaybackTitle("Depeche Mode"))
+        assertEquals("Paradise Rock", station.androidAutoPlaybackTitle(null))
+    }
+
+    @Test
+    fun oldCatalogUsesBuiltInOrDerivedShortNames() {
+        val file = storeFile()
+        file.writeText("""[
+            {"id":"radio-paradise-main","name":"Radio Paradise Main Mix","url":"https://example.org/main","image":"","infoDataUrl":""},
+            {"id":"custom","name":"My Custom Radio Station","url":"https://example.org/custom","image":"","infoDataUrl":""}
+        ]""")
+
+        val stations = StationCatalog(file).allStations.value
+        assertEquals("Paradise Main", stations.first { it.id == "radio-paradise-main" }.shortName)
+        assertEquals("My Custom Radio", stations.first { it.id == "custom" }.shortName)
+    }
+
+    @Test
+    fun shortNameAcceptsSixteenCharactersAndSurvivesReload() = runBlocking {
+        val file = storeFile()
+        val catalog = StationCatalog(file)
+        val url = "https://example.org/live"
+        val saved = catalog.save(null, "Custom station", url, "", "",
+            shortName = " 1234567890123456 ").getOrThrow()
+
+        assertTrue(catalog.save(saved.id, saved.name, url, "", "",
+            shortName = "12345678901234567").isFailure)
+        assertEquals("1234567890123456", StationCatalog(file).allStations.value.last().shortName)
+    }
+
+    @Test
     fun seedsAllStationsInPlaybackOrder() {
         val stations = StationCatalog(storeFile()).stations.value
         assertEquals(

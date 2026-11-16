@@ -41,7 +41,7 @@ class PlayerSongLayoutTest {
                     onPrevious = {},
                     onNext = {},
                     onStop = {},
-                    saveStation = { _, _, _, _, _, _, _ -> Result.success(station) },
+                    saveStation = { _, _, _, _, _, _, _, _ -> Result.success(station) },
                     setStationEnabled = { _, _ -> Result.success(false) },
                     moveStation = { _, _ -> Result.success(false) }
                 )

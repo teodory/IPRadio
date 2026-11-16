@@ -46,7 +46,8 @@ class StationCatalog internal constructor(private val file: File) {
         image: String,
         infoDataUrl: String,
         enabled: Boolean = true,
-        gainDb: Int = 0
+        gainDb: Int = 0,
+        shortName: String? = null
     ): Result<Station> = updateStations { current ->
         val previous = id?.let { stationId ->
             current.firstOrNull { it.id == stationId }
@@ -54,7 +55,8 @@ class StationCatalog internal constructor(private val file: File) {
         }
         val station = validatedStation(
             previous?.id ?: UUID.randomUUID().toString(),
-            name, url, image, infoDataUrl, defaultStationsById[id], enabled, gainDb
+            name, url, image, infoDataUrl, defaultStationsById[id], enabled, gainDb,
+            shortName ?: previous?.shortName
         )
         val updated = if (previous == null || previous.enabled != station.enabled) {
             current.insertAtAvailabilityEnd(station)
@@ -139,7 +141,8 @@ class StationCatalog internal constructor(private val file: File) {
             val gainDb = fields["gainDb"]?.let { field ->
                 (field as? JsonPrimitive)?.intOrNull ?: throw IllegalArgumentException("Invalid station gain.")
             } ?: 0
-            validatedStation(id, name, url, fields.string("image"), metadataUrl, builtIn, enabled, gainDb)
+            val shortName = fields["shortName"]?.let { fields.string("shortName") }
+            validatedStation(id, name, url, fields.string("image"), metadataUrl, builtIn, enabled, gainDb, shortName)
         }
         val ids = stations.map(Station::id).toSet()
         require(stations.isNotEmpty() && ids.size == stations.size)
@@ -151,6 +154,7 @@ class StationCatalog internal constructor(private val file: File) {
             buildJsonObject {
                 put("id", station.id)
                 put("name", station.name)
+                put("shortName", station.shortName)
                 put("url", station.url)
                 put("image", station.image)
                 put("infoDataUrl", station.infoDataUrl)
@@ -225,11 +229,19 @@ private fun validatedStation(
     infoDataUrl: String,
     builtIn: Station?,
     enabled: Boolean,
-    gainDb: Int
+    gainDb: Int,
+    shortName: String?
 ): Station {
     require(gainDb in -12..12) { "Station volume must be between -12 and +12 dB." }
     val trimmedName = name.trim()
     require(trimmedName.isNotEmpty()) { "Enter a station name." }
+    val playbackName = shortName?.trim()?.takeIf { it.isNotEmpty() }
+        ?: builtIn?.takeIf { it.name == trimmedName }?.shortName
+        ?: trimmedName.toShortStationName()
+    require(playbackName.codePointCount(0, playbackName.length) <= MAX_STATION_SHORT_NAME_LENGTH) {
+        "Enter a short name of at most $MAX_STATION_SHORT_NAME_LENGTH characters."
+    }
+    require('\n' !in playbackName && '\r' !in playbackName) { "Enter a single-line short name." }
     val streamUrl = validateUrl(url, streamSchemes, "Enter a valid HTTP, HTTPS, RTSP, or UDP stream URL.")
     val imageUrl = validateUrl(image, webSchemes, "Enter a valid HTTP or HTTPS image URL.", optional = true)
     val metadataUrl = validateUrl(
@@ -245,7 +257,8 @@ private fun validatedStation(
         metadataFormat = builtIn?.metadataFormat ?: MetadataFormat.PLAIN_TEXT.takeIf { metadataUrl.isNotEmpty() },
         enabled = enabled,
         gainDb = gainDb,
-        countryCode = builtIn?.countryCode
+        countryCode = builtIn?.countryCode,
+        shortName = playbackName
     )
 }
 

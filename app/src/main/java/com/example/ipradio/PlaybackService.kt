@@ -362,11 +362,10 @@ class PlaybackService : MediaLibraryService() {
                     .appendPath(resources.getResourceEntryName(resource))
                     .build()
         }
-        val stationName = displayName(forAndroidAuto = true)
-        val stationTitle = if (playableSource) "📻 $stationName" else stationName
+        val stationName = if (playableSource) shortName else displayName(forAndroidAuto = true)
         return MediaMetadata.Builder()
             .setTitle(song?.title ?: stationName)
-            .setDisplayTitle(song?.artist?.let { "$stationTitle\n$it" } ?: stationTitle)
+            .setDisplayTitle(if (playableSource) androidAutoPlaybackTitle(song?.artist) else stationName)
             .setSubtitle(song?.title)
             .setArtist(song?.artist)
             .setArtworkUri(artwork)

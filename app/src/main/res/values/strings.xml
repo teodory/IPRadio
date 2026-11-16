@@ -17,6 +17,7 @@
     <string name="enable_station">Enable %1$s</string>
     <string name="station_availability_error">Couldn’t update the station.</string>
     <string name="station_gain">Station volume</string>
+    <string name="station_short_name">Short name (max. %1$d)</string>
     <string name="station_gain_value">%1$s dB</string>
     <string name="move_station_up">Move %1$s up</string>
     <string name="move_station_down">Move %1$s down</string>

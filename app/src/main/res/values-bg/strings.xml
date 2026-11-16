@@ -17,6 +17,7 @@
     <string name="enable_station">Включи %1$s</string>
     <string name="station_availability_error">Станцията не можа да се промени.</string>
     <string name="station_gain">Сила на звука на станцията</string>
+    <string name="station_short_name">Късо име (макс. %1$d)</string>
     <string name="station_gain_value">%1$s dB</string>
     <string name="move_station_up">Премести %1$s нагоре</string>
     <string name="move_station_down">Премести %1$s надолу</string>

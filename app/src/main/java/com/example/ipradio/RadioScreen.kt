@@ -101,7 +101,7 @@ internal fun RadioScreen(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onStop: () -> Unit,
-    saveStation: suspend (String?, String, String, String, String, Boolean, Int) -> Result<Station>,
+    saveStation: suspend (String?, String, String, String, String, Boolean, Int, String?) -> Result<Station>,
     setStationEnabled: suspend (String, Boolean) -> Result<Boolean>,
     moveStation: suspend (String, Int) -> Result<Boolean>
 ) {
